@@ -5,10 +5,13 @@
 [![Java 21+](https://img.shields.io/badge/Java-21+-blue.svg)](https://adoptium.net/)
 [![Minecraft 1.21.x](https://img.shields.io/badge/Minecraft-1.21.x-green.svg)](https://minecraft.net/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Beta](https://img.shields.io/badge/Status-Beta-orange.svg)]()
 
 **Made by the developers of [RevivalSMP.net](https://revivalsmp.net)**
 
-RetroMod is a drop-in Minecraft mod that transforms older mod bytecode at load time — rewriting renamed methods, redirecting removed APIs, and patching Mixin targets — so old mods just work. Supports **Fabric**, **NeoForge**, and **Forge** with 33 version shims covering every 1.21.x transition.
+> **This project is currently in beta.** It works for many mods, but some complex mods may still have issues. Always keep backups of your original mod files. Please report bugs on [GitHub Issues](https://github.com/Bownlux/MC-RetroMod/issues).
+
+RetroMod is a drop-in Minecraft mod that transforms older mod bytecode at load time — rewriting renamed methods, redirecting removed APIs, and patching Mixin targets — so old mods just work. Supports **Fabric**, **NeoForge**, and **Forge** with version shims covering Minecraft 1.12.2 all the way through 1.21.11.
 
 ---
 
@@ -17,19 +20,30 @@ RetroMod is a drop-in Minecraft mod that transforms older mod bytecode at load t
 ### Fabric
 
 1. Download `retromod-1.0.0-beta.1.jar` and put it in `mods/`
-2. Launch Minecraft once, then close it
-3. Add your old mods to `mods/`
-4. Launch again — they should work!
+2. Launch Minecraft once, then close it — this creates the `retromod-input/` folder and a config that lets old mods load
+3. Put your old mods in the `retromod-input/` folder (in your `.minecraft` directory)
+4. Launch again — RetroMod transforms them and shows a restart popup
+5. Restart one more time — done, your old mods work!
 
-> **Why two launches?** Fabric blocks mods targeting older versions. RetroMod's first launch creates a config that bypasses this so old mods can load.
+> **Why not just drop old mods in `mods/`?** Fabric checks mod versions before RetroMod can run. If you put an old mod directly in `mods/`, Fabric rejects it and crashes (exit code 255). The `retromod-input/` folder lets RetroMod transform the mod first, then move it to `mods/` with the correct version info.
+>
+> **Alternative:** Use the CLI to prep everything in one step: `java -jar retromod-cli.jar prepare ~/.minecraft --aot`
 
 ### Forge / NeoForge
 
-1. Put RetroMod in `mods/`, add your old mods too (even Forge mods on NeoForge!)
-2. Launch the game — RetroMod auto-transforms incompatible mods
-3. Restart when prompted — done!
+1. Put RetroMod in `mods/`
+2. Drop your old mods in `mods/` too (or in `retromod-input/` if you prefer)
+3. Launch the game — RetroMod transforms incompatible mods and updates their `mods.toml`
+4. Restart when prompted — done!
 
-Originals are backed up to `mods/retromod-backups/` before transforming.
+> Originals are backed up to `mods/retromod-backups/`. Even Forge mods work on NeoForge!
+
+### Uninstalling
+
+1. Remove `retromod-*.jar` from `mods/`
+2. If you want original (untransformed) mods back, restore them from `mods/retromod-backups/` or `retromod-input/processed/`
+
+> Transformed mods have updated bytecode and version info, so they may still work without RetroMod. But if anything breaks, restore the originals.
 
 ---
 
@@ -46,15 +60,25 @@ Originals are backed up to `mods/retromod-backups/` before transforming.
 
 ## Supported Versions
 
-Shims are **chainable** — a 1.21 mod can run on 1.21.11 by applying each shim in sequence.
+Shims are **chainable** — a 1.12.2 Forge mod can run on 1.21.11 by applying each shim in sequence. **All intermediate versions** (1.16.2, 1.14.1, 1.15.1, etc.) are supported via fuzzy version matching — mods targeting any version within a range are automatically handled.
 
-| Loader | Shims | Range |
-|--------|-------|-------|
-| **Fabric** | 11 | 1.21 → 1.21.1 → ... → 1.21.11 |
-| **NeoForge** | 11 | 1.21 → 1.21.1 → ... → 1.21.11 |
-| **Forge** | 11 | 1.20 (Forge) → 1.21 (NeoForge) → ... → 1.21.10 |
+| Loader | Shims | Range | Stability |
+|--------|-------|-------|-----------|
+| **Fabric** | 31 | 1.14 → ... → 1.21.11 | 1.16.5+: Beta, 1.14–1.15: Alpha |
+| **NeoForge** | 17 | 1.20.1 → ... → 1.21.11 | Beta |
+| **Forge** | 27 | 1.12.2 → ... → 1.20 → 1.21 (NeoForge) → ... → 1.21.11 | 1.16.5+: Beta, 1.12–1.15: Alpha |
 
-> Forge is less active than NeoForge for 1.21.x but does have releases. The Forge 1.20→NeoForge 1.21 shim handles cross-loader migration.
+> **Fuzzy version matching:** If a mod targets an intermediate version like 1.16.2 or 1.14.3, RetroMod automatically resolves it to the nearest milestone shim. This means every MC version from 1.12.2 to 1.21.11 is supported, even versions without their own dedicated shim.
+
+> **Alpha versions (1.12.2–1.15.2):** These cover massive Minecraft changes like "The Flattening" (1.12→1.13) where every block ID, entity name, and NBT class was renamed. Mods from these versions may not fully work and could be unstable. Use at your own risk.
+>
+> **Beta versions (1.16.5+):** More stable but still being tested. Most mods should work. Always keep backups.
+
+## API Compatibility
+
+RetroMod supports **34+ popular modding APIs** — both actively maintained and legacy/unmaintained. See [API_COMPATIBILITY.md](API_COMPATIBILITY.md) for the full list.
+
+Highlights: Fabric API, Mod Menu, Cloth Config, REI, Trinkets, JEI, Curios, GeckoLib, Architectury, Create, and legacy APIs like Baubles, NEI, Thermal/RF, and old WAILA. When a mod uses an unmaintained API, RetroMod embeds a compatibility shim that bridges old API calls to their modern equivalent.
 
 ---
 
@@ -79,17 +103,15 @@ This builds everything and puts the output in `dist/`:
 | `retromod-*-fabric.jar` | Fabric mod — drop in `mods/` |
 | `retromod-*-neoforge.jar` | NeoForge mod — drop in `mods/` |
 
-> There's also `build-all.sh` which builds JARs for **every** MC version (1.21–1.21.11) × every loader (37 JARs total). That's mainly for publishing to Modrinth.
+> There's also `build-all.sh` / `build-all.bat` which builds JARs for **every** MC version × every loader.
 
 ### Maven Build
 
 ```bash
-mvn clean package          # Build everything
-mvn clean package -Pcli    # CLI-only
-mvn clean package -Pfabric # Fabric mod only
+mvn clean package    # Build everything + create dist/ with all JARs
 ```
 
-Maven output goes to `target/` with 4 JARs: plain `.jar` (mod), `-all.jar` (shaded CLI), `-agent.jar` (Java agent), `-sources.jar`.
+This is what `build.sh` / `build.bat` use internally. Output goes to both `target/` (raw JARs) and `dist/` (ready-to-use JARs).
 
 ---
 
@@ -228,11 +250,16 @@ public class Fabric_X_to_Y implements VersionShim {
 
 ## Known Limitations
 
+> **Beta Notice:** RetroMod is in beta. While it works for many mods, some complex mods may still have issues. Always keep backups.
+>
+> **Alpha Notice (1.12.2–1.15.2):** Support for these very old versions is in alpha. The API changes between these versions were enormous (The Flattening alone renamed hundreds of classes). Expect instability, especially with complex mods. Simple mods have the best chance of working.
+
 1. Cannot transform already-loaded classes without Java Agent mode
 2. Complex Mixins may need manual shim updates for non-standard patterns
-3. Only mod loader APIs are shimmed (not Minecraft internals)
+3. **Alpha:** Legacy mods (1.12.2–1.15.2) may be unstable — especially mods crossing "The Flattening" (1.12→1.13) which renamed every block, entity, and NBT class
 4. Cross-loader mods (Forge mod on Fabric) are not supported
 5. Rendering backend shims activate only when MC actually switches backends
+6. Very old mods using Java 8 reflection patterns may need additional shim work
 
 ## Contributing
 

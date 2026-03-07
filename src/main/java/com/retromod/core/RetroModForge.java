@@ -1,6 +1,6 @@
 /*
  * RetroMod - Backwards Compatibility Layer for Minecraft Mods
- * Copyright (c) 2026 Bownlux. Licensed under RetroMod Personal Use License.
+ * Copyright (c) 2026 Bownlux. MIT License.
  */
 package com.retromod.core;
 
@@ -52,29 +52,41 @@ public class RetroModForge {
     
     public RetroModForge() {
         LOGGER.info("RetroMod initializing on Forge...");
-        
+
         // Detect environment
         boolean isServer = EnvironmentDetector.isDedicatedServer();
         LOGGER.info("Environment: {}", isServer ? "Dedicated Server" : "Client");
-        
+
         // Initialize the transformer
         RetroModTransformer transformer = RetroModTransformer.getInstance();
-        
+
         // Load Forge-specific shims
         loadForgeShims(transformer);
-        
+
         // Initialize hybrid AOT/JIT engine
         initializeHybridEngine();
-        
+
+        // Transform mods from retromod-input/ folder
+        int transformed = transformModsFromInput();
+
+        // Also scan mods/ for incompatible mods and transform in place
+        transformed += transformModsInPlace();
+
         // CLIENT: Show GUI for first-time setup or add mods button
         // SERVER: Skip GUI, just log
         if (!isServer && EnvironmentDetector.canShowGui()) {
-            initializeClientGui();
+            if (transformed > 0) {
+                showRestartPopup(transformed);
+            } else {
+                initializeClientGui();
+            }
         } else {
             LOGGER.info("Server mode - GUI disabled");
-            LOGGER.info("Add mods to the mods folder and restart");
+            if (transformed > 0) {
+                LOGGER.info("Transformed {} mod(s) - please restart for changes to take effect", transformed);
+            }
         }
-        
+
         // Scan for mods that can be runtime-transformed (minor versions)
         scanForRuntimeTransformableMods();
         
@@ -151,6 +163,138 @@ public class RetroModForge {
         }
     }
     
+    /**
+     * Transform mods from the retromod-input/ folder.
+     */
+    private int transformModsFromInput() {
+        int count = 0;
+        try {
+            Path gameDir = Paths.get(".").toAbsolutePath().normalize();
+            Path inputDir = gameDir.resolve("retromod-input");
+            Path modsDir = gameDir.resolve("mods");
+            Path processedDir = inputDir.resolve("processed");
+
+            Files.createDirectories(inputDir);
+            Files.createDirectories(processedDir);
+
+            if (!Files.isDirectory(inputDir)) return 0;
+
+            java.util.List<Path> jars;
+            try (var stream = Files.list(inputDir)) {
+                jars = stream.filter(p -> p.toString().endsWith(".jar"))
+                             .filter(Files::isRegularFile).toList();
+            }
+
+            if (jars.isEmpty()) return 0;
+
+            ForgeModTransformer transformer = new ForgeModTransformer("1.21.11");
+
+            for (Path modJar : jars) {
+                try {
+                    String fileName = modJar.getFileName().toString();
+                    LOGGER.info("Transforming from retromod-input/: {}", fileName);
+
+                    Path transformed = transformer.transformMod(modJar, modsDir);
+                    if (transformed != null) {
+                        Files.move(modJar, processedDir.resolve(fileName),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        count++;
+                    }
+                } catch (Exception e) {
+                    LOGGER.error("Failed to transform {}: {}", modJar.getFileName(), e.getMessage());
+                }
+            }
+
+            if (count > 0) {
+                LOGGER.info("Transformed {} mod(s) from retromod-input/", count);
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error scanning retromod-input/: {}", e.getMessage());
+        }
+        return count;
+    }
+
+    /**
+     * Scan mods/ for incompatible mods and transform them in place.
+     */
+    private int transformModsInPlace() {
+        int count = 0;
+        try {
+            Path gameDir = Paths.get(".").toAbsolutePath().normalize();
+            Path modsDir = gameDir.resolve("mods");
+            Path backupDir = modsDir.resolve("retromod-backups");
+
+            if (!Files.isDirectory(modsDir)) return 0;
+
+            ForgeModTransformer transformer = new ForgeModTransformer("1.21.11");
+            ModVersionDetector detector = new ModVersionDetector();
+
+            java.util.List<Path> jars;
+            try (var stream = Files.list(modsDir)) {
+                jars = stream.filter(p -> p.toString().endsWith(".jar"))
+                             .filter(Files::isRegularFile)
+                             .filter(p -> !p.getFileName().toString().contains("-retromod"))
+                             .filter(p -> !p.getFileName().toString().startsWith("retromod"))
+                             .toList();
+            }
+
+            for (Path modJar : jars) {
+                try {
+                    var info = detector.detectVersion(modJar);
+                    if (info != null && info.needsTransformation("1.21.11")) {
+                        String fileName = modJar.getFileName().toString();
+                        LOGGER.info("Found incompatible mod in mods/: {} ({})", fileName, info.targetMcVersion());
+
+                        Files.createDirectories(backupDir);
+                        Files.copy(modJar, backupDir.resolve(fileName),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+                        Path tempDir = Files.createTempDirectory("retromod-inplace-");
+                        Path transformed = transformer.transformMod(modJar, tempDir);
+                        if (transformed != null) {
+                            Files.move(transformed, modJar, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            LOGGER.info("Transformed in place: {}", fileName);
+                            count++;
+                        }
+                        try (var walk = Files.walk(tempDir)) {
+                            walk.sorted(java.util.Comparator.reverseOrder())
+                                .forEach(p -> { try { Files.delete(p); } catch (Exception ignored) {} });
+                        }
+                    }
+                } catch (Exception e) {
+                    LOGGER.debug("Could not check: {}", modJar.getFileName());
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error scanning mods/ for transformation: {}", e.getMessage());
+        }
+        return count;
+    }
+
+    /**
+     * Show a popup telling the user to restart Minecraft.
+     */
+    private void showRestartPopup(int transformedCount) {
+        if (!EnvironmentDetector.canShowGui()) return;
+
+        Thread popupThread = new Thread(() -> {
+            try {
+                javax.swing.UIManager.setLookAndFeel(
+                    javax.swing.UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+
+            javax.swing.JOptionPane.showMessageDialog(null,
+                "RetroMod transformed " + transformedCount + " mod(s).\n\n" +
+                "Please close Minecraft and launch it again\n" +
+                "for the changes to take effect.\n\n" +
+                "This only happens the first time.",
+                "RetroMod - Restart Required",
+                javax.swing.JOptionPane.INFORMATION_MESSAGE);
+        }, "RetroMod-RestartPopup");
+        popupThread.setDaemon(true);
+        popupThread.start();
+    }
+
     private void scanForRuntimeTransformableMods() {
         try {
             Path modsFolder = Paths.get("mods");

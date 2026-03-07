@@ -1,6 +1,30 @@
 # RetroMod Version Shims - ServiceLoader configuration
 # Copyright (c) 2026 Bownlux
 
+# ============================================================
+# FABRIC SHIMS - Legacy versions (1.14.4 → 1.21)
+# ============================================================
+com.retromod.shim.fabric.Fabric_1_14_4_to_1_15_2
+com.retromod.shim.fabric.Fabric_1_15_2_to_1_16_5
+com.retromod.shim.fabric.Fabric_1_16_5_to_1_17
+com.retromod.shim.fabric.Fabric_1_17_to_1_17_1
+com.retromod.shim.fabric.Fabric_1_17_1_to_1_18
+com.retromod.shim.fabric.Fabric_1_18_to_1_18_1
+com.retromod.shim.fabric.Fabric_1_18_1_to_1_18_2
+com.retromod.shim.fabric.Fabric_1_18_2_to_1_19
+com.retromod.shim.fabric.Fabric_1_19_to_1_19_1
+com.retromod.shim.fabric.Fabric_1_19_1_to_1_19_2
+com.retromod.shim.fabric.Fabric_1_19_2_to_1_19_3
+com.retromod.shim.fabric.Fabric_1_19_3_to_1_19_4
+com.retromod.shim.fabric.Fabric_1_19_4_to_1_20
+com.retromod.shim.fabric.Fabric_1_20_to_1_20_1
+com.retromod.shim.fabric.Fabric_1_20_1_to_1_20_2
+com.retromod.shim.fabric.Fabric_1_20_2_to_1_20_3
+com.retromod.shim.fabric.Fabric_1_20_3_to_1_20_4
+com.retromod.shim.fabric.Fabric_1_20_4_to_1_20_5
+com.retromod.shim.fabric.Fabric_1_20_5_to_1_20_6
+com.retromod.shim.fabric.Fabric_1_20_6_to_1_21
+
 # Fabric shims (1.21.x chain)
 com.retromod.shim.fabric.Fabric_1_21_to_1_21_1
 com.retromod.shim.fabric.Fabric_1_21_1_to_1_21_2
@@ -13,6 +37,17 @@ com.retromod.shim.fabric.Fabric_1_21_7_to_1_21_8
 com.retromod.shim.fabric.Fabric_1_21_8_to_1_21_9
 com.retromod.shim.fabric.Fabric_1_21_9_to_1_21_10
 com.retromod.shim.fabric.Fabric_1_21_10_to_1_21_11
+
+# ============================================================
+# NEOFORGE SHIMS - Legacy versions (1.20.1 → 1.21)
+# NeoForge started at 1.20.1 when it forked from Forge
+# ============================================================
+com.retromod.shim.neoforge.NeoForge_1_20_1_to_1_20_2
+com.retromod.shim.neoforge.NeoForge_1_20_2_to_1_20_3
+com.retromod.shim.neoforge.NeoForge_1_20_3_to_1_20_4
+com.retromod.shim.neoforge.NeoForge_1_20_4_to_1_20_5
+com.retromod.shim.neoforge.NeoForge_1_20_5_to_1_20_6
+com.retromod.shim.neoforge.NeoForge_1_20_6_to_1_21
 
 # NeoForge shims (1.21.x chain)
 com.retromod.shim.neoforge.NeoForge_1_21_to_1_21_1
@@ -27,7 +62,28 @@ com.retromod.shim.neoforge.NeoForge_1_21_8_to_1_21_9
 com.retromod.shim.neoforge.NeoForge_1_21_9_to_1_21_10
 com.retromod.shim.neoforge.NeoForge_1_21_10_to_1_21_11
 
-# Forge shims (1.20.x → NeoForge 1.21)
+# ============================================================
+# FORGE SHIMS - Legacy versions (1.12.2 → 1.20)
+# Forge was the main loader before NeoForge forked at 1.20.1
+# The Flattening (1.12.2 → 1.13.2) is the biggest transition
+# ============================================================
+com.retromod.shim.forge.Forge_1_12_2_to_1_13_2
+com.retromod.shim.forge.Forge_1_13_2_to_1_14_4
+com.retromod.shim.forge.Forge_1_14_4_to_1_15_2
+com.retromod.shim.forge.Forge_1_15_2_to_1_16_5
+com.retromod.shim.forge.Forge_1_16_5_to_1_17
+com.retromod.shim.forge.Forge_1_17_to_1_17_1
+com.retromod.shim.forge.Forge_1_17_1_to_1_18
+com.retromod.shim.forge.Forge_1_18_to_1_18_1
+com.retromod.shim.forge.Forge_1_18_1_to_1_18_2
+com.retromod.shim.forge.Forge_1_18_2_to_1_19
+com.retromod.shim.forge.Forge_1_19_to_1_19_1
+com.retromod.shim.forge.Forge_1_19_1_to_1_19_2
+com.retromod.shim.forge.Forge_1_19_2_to_1_19_3
+com.retromod.shim.forge.Forge_1_19_3_to_1_19_4
+com.retromod.shim.forge.Forge_1_19_4_to_1_20
+
+# Forge → NeoForge migration (cross-loader)
 com.retromod.shim.forge.Forge_1_20_to_NeoForge_1_21
 
 # Forge shims (1.21.x chain)
@@ -60,6 +116,8 @@ com.retromod.shim.api.fabric.OwoLibApiShim
 com.retromod.shim.api.fabric.LibGuiApiShim
 com.retromod.shim.api.fabric.EmiApiShim
 com.retromod.shim.api.fabric.ForgeConfigApiPortShim
+com.retromod.shim.api.fabric.LbaApiShim
+com.retromod.shim.api.fabric.FabricShieldLibApiShim
 
 # Forge/NeoForge API shims
 com.retromod.shim.api.forge.JeiApiShim
@@ -69,6 +127,10 @@ com.retromod.shim.api.forge.MekanismApiShim
 com.retromod.shim.api.forge.ForgeConfigApiShim
 com.retromod.shim.api.forge.ForgeEventApiShim
 com.retromod.shim.api.forge.ForgeRegistryApiShim
+com.retromod.shim.api.forge.BaublesApiShim
+com.retromod.shim.api.forge.NeiApiShim
+com.retromod.shim.api.forge.ThermalApiShim
+com.retromod.shim.api.forge.WailaApiShim
 
 # Cross-loader API shims (work on both Fabric and Forge/NeoForge)
 com.retromod.shim.api.common.GeckoLibApiShim
@@ -79,3 +141,5 @@ com.retromod.shim.api.common.YaclApiShim
 com.retromod.shim.api.common.JadeWailaApiShim
 com.retromod.shim.api.common.Ae2ApiShim
 com.retromod.shim.api.common.BotaniaApiShim
+com.retromod.shim.api.common.MixinExtrasApiShim
+com.retromod.shim.api.common.AutoRegLibApiShim

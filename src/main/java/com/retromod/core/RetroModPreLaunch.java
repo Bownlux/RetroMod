@@ -101,12 +101,12 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
             );
             
             totalTransformed = fromPrimary + fromSecondary;
-            
+
             // Step 3: Show restart message if we transformed anything
             if (totalTransformed > 0) {
                 showRestartMessage();
             }
-            
+
             LOGGER.info("RetroMod pre-launch complete!");
             
         } catch (Exception e) {

@@ -4,11 +4,15 @@ build/
 dist/
 out/
 *.jar
-!gradle/wrapper/*.jar
 
-# Gradle
+# Gradle (project uses Maven, not Gradle)
 .gradle/
-gradle/wrapper/gradle-wrapper.jar
+gradle/
+build.gradle
+settings.gradle
+gradle.properties
+gradlew
+gradlew.bat
 
 # Maven
 *.log

@@ -3,20 +3,18 @@
 # RetroMod Multi-Version Build Script
 # Copyright (c) 2026 RevivalSMP. MIT License.
 #
-# Builds RetroMod for ALL loaders and ALL 1.21.x versions:
-#   - Fabric (1.21 through 1.21.11)
-#   - Forge (1.21 through 1.21.11)
-#   - NeoForge (1.21 through 1.21.11)
+# Builds RetroMod for ALL loaders and ALL supported MC versions:
+#   - Fabric (1.14 through 1.21.11)
+#   - Forge (1.12.2 through 1.21.11)
+#   - NeoForge (1.20.1 through 1.21.11)
 #   - CLI tool (standalone)
-#
-# Total output: 36 mod JARs + 1 CLI JAR = 37 JARs
 # ============================================================================
 
 # Don't exit on error - we'll handle errors ourselves
 # set -e
 
 VERSION="1.0.0-beta.1"
-MC_VERSIONS=("1.21" "1.21.1" "1.21.2" "1.21.3" "1.21.4" "1.21.5" "1.21.6" "1.21.7" "1.21.8" "1.21.9" "1.21.10" "1.21.11")
+MC_VERSIONS=("1.12.2" "1.13" "1.13.1" "1.13.2" "1.14" "1.14.1" "1.14.2" "1.14.3" "1.14.4" "1.15" "1.15.1" "1.15.2" "1.16" "1.16.1" "1.16.2" "1.16.3" "1.16.4" "1.16.5" "1.17" "1.17.1" "1.18" "1.18.1" "1.18.2" "1.19" "1.19.1" "1.19.2" "1.19.3" "1.19.4" "1.20" "1.20.1" "1.20.2" "1.20.3" "1.20.4" "1.20.5" "1.20.6" "1.21" "1.21.1" "1.21.2" "1.21.3" "1.21.4" "1.21.5" "1.21.6" "1.21.7" "1.21.8" "1.21.9" "1.21.10" "1.21.11")
 LOADERS=("fabric" "forge" "neoforge")
 
 echo "============================================"
@@ -26,9 +24,8 @@ echo "  MIT License - RevivalSMP"
 echo "============================================"
 echo ""
 echo "Building for:"
-echo "  - ${#MC_VERSIONS[@]} Minecraft versions (1.21 - 1.21.11)"
+echo "  - ${#MC_VERSIONS[@]} Minecraft versions (1.12.2 - 1.21.11)"
 echo "  - ${#LOADERS[@]} mod loaders (Fabric, Forge, NeoForge)"
-echo "  - Total: $((${#MC_VERSIONS[@]} * ${#LOADERS[@]})) mod JARs + 1 CLI"
 echo ""
 
 # Check for Maven
@@ -44,9 +41,21 @@ mkdir -p dist/Forge
 mkdir -p dist/NeoForge
 mkdir -p dist/CLI
 
-# Build the base JAR first
-echo "[Step 1/4] Building base JAR with Maven..."
-mvn clean package -DskipTests
+# Check for --skip-build flag (used when called from Maven)
+SKIP_BUILD=false
+for arg in "$@"; do
+    if [ "$arg" = "--skip-build" ]; then
+        SKIP_BUILD=true
+    fi
+done
+
+if [ "$SKIP_BUILD" = false ]; then
+    # Build the base JAR first
+    echo "[Step 1/4] Building base JAR with Maven..."
+    mvn clean package -DskipTests
+else
+    echo "[Step 1/4] Skipping Maven build (--skip-build flag)"
+fi
 
 # Find the built JAR (handle different naming)
 BASE_JAR=""
@@ -55,8 +64,8 @@ if [ -f "target/retromod-${VERSION}.jar" ]; then
 elif [ -f "target/retromod.jar" ]; then
     BASE_JAR="target/retromod.jar"
 else
-    # Find any jar that's not sources/javadoc
-    BASE_JAR=$(find target -name "retromod*.jar" -not -name "*sources*" -not -name "*javadoc*" | head -1)
+    # Find any jar that's not sources/javadoc/agent/all
+    BASE_JAR=$(find target -maxdepth 1 -name "retromod*.jar" -not -name "*sources*" -not -name "*javadoc*" -not -name "*agent*" -not -name "*all*" | head -1)
 fi
 
 if [ -z "$BASE_JAR" ] || [ ! -f "$BASE_JAR" ]; then
@@ -65,7 +74,7 @@ if [ -z "$BASE_JAR" ] || [ ! -f "$BASE_JAR" ]; then
     exit 1
 fi
 
-echo "  ✓ Base JAR: $BASE_JAR"
+echo "  Base JAR: $BASE_JAR"
 
 echo ""
 echo "[Step 2/4] Creating CLI tool..."
@@ -81,41 +90,69 @@ else
 fi
 
 cp "$CLI_JAR" "dist/CLI/retromod-${VERSION}-cli.jar"
-echo "  ✓ dist/CLI/retromod-${VERSION}-cli.jar"
+echo "  dist/CLI/retromod-${VERSION}-cli.jar"
 
 echo ""
 echo "[Step 3/4] Creating loader-specific JARs..."
+
+# Function to check if a loader supports a given MC version
+loader_supports_version() {
+    local loader=$1
+    local ver=$2
+    case $loader in
+        neoforge)
+            # NeoForge started at 1.20.1
+            case $ver in
+                1.12*|1.13*|1.14*|1.15*|1.16*|1.17*|1.18*|1.19*|1.20) return 1 ;;
+                *) return 0 ;;
+            esac
+            ;;
+        fabric)
+            # Fabric started at 1.14
+            case $ver in
+                1.12*|1.13*) return 1 ;;
+                *) return 0 ;;
+            esac
+            ;;
+        *) return 0 ;;  # Forge supports all versions
+    esac
+}
 
 # Function to create a mod JAR for specific loader and version
 create_mod_jar() {
     local LOADER=$1
     local MC_VERSION=$2
     local LOADER_DIR=""
-    
+
+    # Skip unsupported loader/version combinations
+    if ! loader_supports_version "$LOADER" "$MC_VERSION"; then
+        return 0  # Silently skip
+    fi
+
     # Map to correct directory names
     case $LOADER in
         fabric) LOADER_DIR="Fabric" ;;
         forge) LOADER_DIR="Forge" ;;
         neoforge) LOADER_DIR="NeoForge" ;;
     esac
-    
+
     local OUTPUT_NAME="retromod-${VERSION}+${MC_VERSION}.jar"
     local ORIG_DIR="$(pwd)"
     local OUTPUT_PATH="${ORIG_DIR}/dist/${LOADER_DIR}/${MC_VERSION}/${OUTPUT_NAME}"
-    
+
     # Create version subdirectory
     mkdir -p "${ORIG_DIR}/dist/${LOADER_DIR}/${MC_VERSION}"
-    
+
     # Create temp directory
     local TEMP_DIR=$(mktemp -d)
-    
+
     # Extract base JAR
     unzip -q "$BASE_JAR" -d "$TEMP_DIR" 2>/dev/null || {
         echo "ERROR: Failed to extract base JAR"
         rm -rf "$TEMP_DIR"
         return 1
     }
-    
+
     # Remove other loaders' files
     case $LOADER in
         fabric)
@@ -227,7 +264,7 @@ side = "BOTH"
 TOML
             ;;
     esac
-    
+
     # Update manifest with version info
     mkdir -p "$TEMP_DIR/META-INF"
     cat > "$TEMP_DIR/META-INF/MANIFEST.MF" << MANIFEST
@@ -239,7 +276,7 @@ RetroMod-Loader: ${LOADER}
 Automatic-Module-Name: retromod
 
 MANIFEST
-    
+
     # Repackage JAR using zip (more compatible than jar command)
     cd "$TEMP_DIR"
     zip -qr "$OUTPUT_PATH" . 2>/dev/null || {
@@ -252,17 +289,15 @@ MANIFEST
         }
     }
     cd "$ORIG_DIR"
-    
+
     # Cleanup
     rm -rf "$TEMP_DIR"
-    
-    echo "  ✓ ${MC_VERSION}"
+
+    echo "  ${MC_VERSION}"
     return 0
 }
 
 # Build all combinations
-TOTAL=$((${#MC_VERSIONS[@]} * ${#LOADERS[@]}))
-CURRENT=0
 FAILED=0
 
 for LOADER in "${LOADERS[@]}"; do
@@ -276,7 +311,6 @@ for LOADER in "${LOADERS[@]}"; do
     esac
     echo "Building ${LOADER_CAP} JARs..."
     for MC_VERSION in "${MC_VERSIONS[@]}"; do
-        CURRENT=$((CURRENT + 1))
         if ! create_mod_jar "$LOADER" "$MC_VERSION"; then
             FAILED=$((FAILED + 1))
         fi
@@ -302,14 +336,9 @@ echo "============================================"
 echo ""
 echo "Output structure:"
 echo "  dist/"
-echo "  ├── Fabric/"
-echo "  │   ├── 1.21/"
-echo "  │   │   └── retromod-${VERSION}+1.21.jar"
-echo "  │   ├── 1.21.1/"
-echo "  │   │   └── ..."
-echo "  │   └── 1.21.11/"
-echo "  ├── Forge/"
-echo "  ├── NeoForge/"
+echo "  ├── Fabric/        (1.14 - 1.21.11)"
+echo "  ├── Forge/         (1.12.2 - 1.21.11)"
+echo "  ├── NeoForge/      (1.20.1 - 1.21.11)"
 echo "  └── CLI/"
 echo "      └── retromod-${VERSION}-cli.jar"
 echo ""
@@ -326,7 +355,4 @@ if [ $FAILED -gt 0 ]; then
     echo "  WARNING: ${FAILED} JAR(s) failed to build"
 fi
 
-echo ""
-echo "Upload to Modrinth:"
-echo "  For each MC version, upload from dist/<Loader>/<version>/"
 echo ""
