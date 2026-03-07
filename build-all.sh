@@ -22,7 +22,7 @@ LOADERS=("fabric" "forge" "neoforge")
 echo "============================================"
 echo "  RetroMod Multi-Version Build Script"
 echo "  Version: ${VERSION}"
-echo "  Copyright (c) 2026 Bownlux"
+echo "  MIT License - RevivalSMP"
 echo "============================================"
 echo ""
 echo "Building for:"
