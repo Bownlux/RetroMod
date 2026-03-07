@@ -1,0 +1,109 @@
+plugins {
+    id 'fabric-loom' version '1.9-SNAPSHOT'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://maven.fabricmc.net/" }
+    maven { url "https://maven.shedaniel.me/" }
+}
+
+loom {
+    // Enable access wideners if needed for accessing private MC methods
+    // accessWidenerPath = file("src/main/resources/retromod.accesswidener")
+}
+
+dependencies {
+    // Minecraft
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    
+    // Fabric
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    
+    // Fabric API (optional, for mod compatibility)
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    
+    // ASM for bytecode manipulation (bundled)
+    implementation "org.ow2.asm:asm:9.7"
+    implementation "org.ow2.asm:asm-commons:9.7"
+    implementation "org.ow2.asm:asm-tree:9.7"
+    implementation "org.ow2.asm:asm-util:9.7"
+    include "org.ow2.asm:asm:9.7"
+    include "org.ow2.asm:asm-commons:9.7"
+    include "org.ow2.asm:asm-tree:9.7"
+    include "org.ow2.asm:asm-util:9.7"
+    
+    // Gson for JSON parsing
+    implementation "com.google.code.gson:gson:2.10.1"
+}
+
+processResources {
+    inputs.property "version", project.version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.base.archivesName.get()}" }
+    }
+    
+    manifest {
+        attributes(
+            "Implementation-Title": project.archives_base_name,
+            "Implementation-Version": project.version,
+            "Premain-Class": "com.retromod.agent.RetroModAgent",
+            "Can-Retransform-Classes": "true"
+        )
+    }
+}
+
+// Create a separate jar that can be used as a Java agent
+tasks.register('agentJar', Jar) {
+    archiveClassifier = 'agent'
+    from sourceSets.main.output
+    
+    manifest {
+        attributes(
+            "Premain-Class": "com.retromod.agent.RetroModAgent",
+            "Agent-Class": "com.retromod.agent.RetroModAgent",
+            "Can-Redefine-Classes": "true",
+            "Can-Retransform-Classes": "true"
+        )
+    }
+}
+
+build.dependsOn agentJar
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+        }
+    }
+    
+    repositories {
+        // Add your maven repository here
+    }
+}

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "retromod",
+  "version": "1.0.0-beta.1",
+  "name": "RetroMod",
+  "description": "Made by the Developers of revivalsmp.net\n\nBackwards compatibility layer for Minecraft mods - run older mods on newer versions. Works on clients AND servers!\n\nMade by the Developers of revivalsmp.net",
+  "authors": ["Bownlux"],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/retromod",
+    "sources": "https://github.com/Bownlux/MC-RetroMod",
+    "issues": "https://github.com/Bownlux/MC-RetroMod/issues"
+  },
+  "license": "MIT",
+  "icon": "assets/retromod/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.retromod.core.RetroMod"],
+    "client": ["com.retromod.core.RetroModClient"],
+    "server": ["com.retromod.core.RetroModServer"],
+    "preLaunch": ["com.retromod.core.RetroModPreLaunch"]
+  },
+  "mixins": [],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": ">=1.21",
+    "java": ">=21"
+  },
+  "suggests": {
+    "fabric-api": "*"
+  },
+  "custom": {
+    "modmenu": {
+      "links": {
+        "modmenu.discord": "https://github.com/Bownlux/MC-RetroMod",
+        "modmenu.issues": "https://github.com/Bownlux/MC-RetroMod/issues"
+      }
+    },
+    "retromod": {
+      "version": "1.0.0-beta.1",
+      "api_archive_url": "https://retromod.example.com/archives/"
+    }
+  }
+}

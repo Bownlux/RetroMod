@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Gradient for the main block -->
+    <linearGradient id="blockGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6B4C9A;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4A2C7A;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Gradient for highlights -->
+    <linearGradient id="highlight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#9B7BD0;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7B5BA0;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Shadow gradient -->
+    <linearGradient id="shadow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3A1C5A;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2A0C4A;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Arrow gradient -->
+    <linearGradient id="arrowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#50E3C2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#30C3A2;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Glow filter -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="#1A0A2E"/>
+  <circle cx="256" cy="256" r="220" fill="#2A1A4E" stroke="#4A2C7A" stroke-width="4"/>
+  
+  <!-- Main Minecraft-style block (3D isometric) -->
+  <!-- Top face -->
+  <polygon points="256,100 376,170 256,240 136,170" fill="url(#highlight)"/>
+  
+  <!-- Left face -->
+  <polygon points="136,170 256,240 256,360 136,290" fill="url(#blockGrad)"/>
+  
+  <!-- Right face -->
+  <polygon points="376,170 376,290 256,360 256,240" fill="url(#shadow)"/>
+  
+  <!-- Grid lines on top -->
+  <line x1="196" y1="135" x2="196" y2="205" stroke="#5A3C8A" stroke-width="2" opacity="0.5"/>
+  <line x1="316" y1="135" x2="316" y2="205" stroke="#5A3C8A" stroke-width="2" opacity="0.5"/>
+  <line x1="166" y1="155" x2="346" y2="155" stroke="#5A3C8A" stroke-width="2" opacity="0.5"/>
+  <line x1="166" y1="185" x2="346" y2="185" stroke="#5A3C8A" stroke-width="2" opacity="0.5"/>
+  
+  <!-- Backwards arrow (time travel / retro symbol) -->
+  <g filter="url(#glow)">
+    <!-- Curved arrow body -->
+    <path d="M 320,380 
+             Q 380,380 380,320 
+             Q 380,260 320,260" 
+          fill="none" stroke="url(#arrowGrad)" stroke-width="20" stroke-linecap="round"/>
+    
+    <!-- Arrow head pointing backwards -->
+    <polygon points="320,220 280,260 320,300" fill="url(#arrowGrad)"/>
+  </g>
+  
+  <!-- "R" letter stylized -->
+  <g transform="translate(180, 140)">
+    <path d="M 30,60 L 30,160 M 30,60 Q 80,60 80,90 Q 80,120 30,120 M 30,120 L 80,160" 
+          fill="none" stroke="#50E3C2" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" 
+          filter="url(#glow)"/>
+  </g>
+  
+  <!-- Version numbers floating (1.8, 1.12, 1.21) -->
+  <text x="90" y="420" fill="#7B5BA0" font-family="monospace" font-size="24" font-weight="bold">1.8</text>
+  <text x="220" y="440" fill="#9B7BD0" font-family="monospace" font-size="28" font-weight="bold">1.14</text>
+  <text x="360" y="420" fill="#50E3C2" font-family="monospace" font-size="32" font-weight="bold">1.21</text>
+  
+  <!-- Connecting dots -->
+  <circle cx="140" cy="405" r="6" fill="#7B5BA0"/>
+  <circle cx="270" cy="420" r="6" fill="#9B7BD0"/>
+  <circle cx="410" cy="405" r="6" fill="#50E3C2"/>
+  
+  <!-- Connection lines -->
+  <line x1="146" y1="405" x2="220" y2="420" stroke="#8B6BB0" stroke-width="2" stroke-dasharray="5,5"/>
+  <line x1="295" y1="420" x2="360" y2="405" stroke="#70D3B2" stroke-width="2" stroke-dasharray="5,5"/>
+</svg>

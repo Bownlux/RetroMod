@@ -1,0 +1,516 @@
+/*
+ * RetroMod - Backwards Compatibility Layer for Minecraft Mods
+ * Copyright (c) 2026 Bownlux. Licensed under RetroMod Personal Use License.
+ */
+package com.retromod.core;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.swing.*;
+import java.awt.*;
+import java.lang.reflect.Method;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * Graceful crash handler for RetroMod.
+ * 
+ * When a transformed mod causes an error during gameplay:
+ * 1. Catches the error before it crashes Minecraft
+ * 2. Pauses the game (sets TPS to 0 / freezes tick loop)
+ * 3. Saves the world automatically
+ * 4. Shows a friendly popup explaining what happened
+ * 5. Forces the user to quit (no "continue playing" option)
+ * 
+ * This prevents players from losing their world due to mod incompatibilities.
+ */
+public class SafeCrashHandler {
+    
+    private static final Logger LOGGER = LoggerFactory.getLogger("RetroMod-SafeCrash");
+    
+    // Singleton
+    private static SafeCrashHandler instance;
+    
+    // Track which class caused an error -> which mod it belongs to
+    private final Map<String, String> classToModMap;
+    
+    // Track errors per mod
+    private final Map<String, Integer> modErrorCounts = new ConcurrentHashMap<>();
+    
+    // Flag to prevent multiple crash dialogs
+    private final AtomicBoolean crashHandled = new AtomicBoolean(false);
+    
+    // Reference to Minecraft server (for world saving)
+    private Object minecraftServer = null;
+    private Object minecraftClient = null;
+    
+    // The previous default handler, so we can chain to it
+    private final Thread.UncaughtExceptionHandler previousHandler;
+
+    private SafeCrashHandler(Map<String, String> classToModMap) {
+        this.classToModMap = classToModMap;
+
+        // Save previous handler so we can chain non-RetroMod exceptions to it
+        this.previousHandler = Thread.getDefaultUncaughtExceptionHandler();
+
+        // Install our handler that only intercepts RetroMod-related exceptions
+        Thread.setDefaultUncaughtExceptionHandler(this::handleUncaughtException);
+    }
+
+    public static synchronized SafeCrashHandler getInstance() {
+        if (instance == null) {
+            // Get class->mod mapping from HybridTransformationEngine if available
+            Map<String, String> mapping = new ConcurrentHashMap<>();
+            try {
+                HybridTransformationEngine engine = HybridTransformationEngine.getInstance();
+                mapping = engine.getClassToModMap();
+            } catch (Exception e) {
+                // Fall back to empty mapping
+            }
+            instance = new SafeCrashHandler(mapping);
+        }
+        return instance;
+    }
+    
+    /**
+     * Register the Minecraft server instance (for world saving).
+     */
+    public void registerServer(Object server) {
+        this.minecraftServer = server;
+        LOGGER.debug("Registered Minecraft server for safe crash handling");
+    }
+    
+    /**
+     * Register the Minecraft client instance.
+     */
+    public void registerClient(Object client) {
+        this.minecraftClient = client;
+        LOGGER.debug("Registered Minecraft client for safe crash handling");
+    }
+    
+    /**
+     * Call this when a transformed class throws an error.
+     * Returns true if the error was handled (game should stop), false to propagate.
+     */
+    public boolean handleTransformError(String className, Throwable error) {
+        // Determine which mod caused this
+        String modId = identifyMod(className, error);
+        
+        // Track error count
+        modErrorCounts.merge(modId, 1, Integer::sum);
+        
+        // Log the error
+        LOGGER.error("Transformed mod '{}' threw an error in class '{}'", modId, className, error);
+        
+        // If this is a critical error (not just a minor issue), trigger safe crash
+        if (isCriticalError(error)) {
+            triggerSafeCrash(modId, className, error);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Global uncaught exception handler.
+     * Only intercepts exceptions from classes we KNOW are RetroMod-transformed
+     * (i.e. present in classToModMap). All other exceptions are forwarded to the
+     * previous handler so Minecraft's own crash handling works normally.
+     */
+    private void handleUncaughtException(Thread thread, Throwable error) {
+        // Only handle if the exception comes from a class we explicitly transformed
+        String modId = identifyConfirmedModFromStackTrace(error);
+
+        if (modId != null) {
+            LOGGER.error("Uncaught exception from transformed mod '{}' on thread '{}'",
+                modId, thread.getName(), error);
+            triggerSafeCrash(modId, null, error);
+        } else {
+            // Not from a RetroMod-transformed class - delegate to previous handler
+            if (previousHandler != null) {
+                previousHandler.uncaughtException(thread, error);
+            } else {
+                // No previous handler - use default JVM behavior
+                System.err.println("Exception in thread \"" + thread.getName() + "\" " + error);
+                error.printStackTrace();
+            }
+        }
+    }
+
+    /**
+     * Only returns a mod ID if the stack trace contains a class that is
+     * CONFIRMED to be in our classToModMap (i.e., actually transformed by RetroMod).
+     */
+    private String identifyConfirmedModFromStackTrace(Throwable error) {
+        for (StackTraceElement element : error.getStackTrace()) {
+            String className = element.getClassName().replace('.', '/');
+            if (classToModMap.containsKey(className)) {
+                return classToModMap.get(className);
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * Identify which mod caused an error from the class name.
+     */
+    private String identifyMod(String className, Throwable error) {
+        // Check direct mapping first
+        if (classToModMap.containsKey(className)) {
+            return classToModMap.get(className);
+        }
+        
+        // Try to identify from stack trace
+        String fromStack = identifyModFromStackTrace(error);
+        if (fromStack != null) {
+            return fromStack;
+        }
+        
+        // Try to guess from class name
+        // e.g., com/example/mymod/SomeClass -> mymod
+        String[] parts = className.replace('.', '/').split("/");
+        if (parts.length >= 3) {
+            return parts[2];
+        }
+        
+        return "unknown";
+    }
+    
+    /**
+     * Identify mod from stack trace.
+     */
+    private String identifyModFromStackTrace(Throwable error) {
+        for (StackTraceElement element : error.getStackTrace()) {
+            String className = element.getClassName().replace('.', '/');
+            
+            // Check if this class is from a transformed mod
+            if (classToModMap.containsKey(className)) {
+                return classToModMap.get(className);
+            }
+            
+            // Skip Minecraft and library classes
+            if (className.startsWith("net/minecraft/") ||
+                className.startsWith("java/") ||
+                className.startsWith("com/mojang/") ||
+                className.startsWith("org/lwjgl/") ||
+                className.startsWith("com/retromod/")) {
+                continue;
+            }
+            
+            // This might be a mod class - try to extract mod name
+            String[] parts = className.split("/");
+            if (parts.length >= 3) {
+                return parts[2];
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Check if this is a critical error that requires safe crash.
+     */
+    private boolean isCriticalError(Throwable error) {
+        // Always critical
+        if (error instanceof OutOfMemoryError ||
+            error instanceof StackOverflowError ||
+            error instanceof NoClassDefFoundError ||
+            error instanceof NoSuchMethodError ||
+            error instanceof NoSuchFieldError ||
+            error instanceof IncompatibleClassChangeError) {
+            return true;
+        }
+        
+        // Check if it's during a critical game phase
+        String message = error.getMessage();
+        if (message != null) {
+            if (message.contains("tick") ||
+                message.contains("render") ||
+                message.contains("world") ||
+                message.contains("entity") ||
+                message.contains("block")) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Trigger the safe crash sequence.
+     */
+    private void triggerSafeCrash(String modId, String className, Throwable error) {
+        // Only handle one crash at a time
+        if (!crashHandled.compareAndSet(false, true)) {
+            return;
+        }
+        
+        LOGGER.error("=======================================================");
+        LOGGER.error("  SAFE CRASH TRIGGERED");
+        LOGGER.error("  Mod: {}", modId);
+        LOGGER.error("  Class: {}", className != null ? className : "unknown");
+        LOGGER.error("  Error: {}", error.getMessage());
+        LOGGER.error("=======================================================");
+        
+        // Step 1: Pause the game
+        pauseGame();
+        
+        // Step 2: Save the world
+        boolean worldSaved = saveWorld();
+        
+        // Step 3: Show the crash dialog
+        showCrashDialog(modId, error, worldSaved);
+    }
+    
+    /**
+     * Pause the game by stopping the tick loop.
+     */
+    private void pauseGame() {
+        LOGGER.info("Pausing game...");
+        
+        try {
+            // Try to pause via Minecraft client
+            if (minecraftClient != null) {
+                // Try: minecraft.pause() or minecraft.setScreen(new PauseScreen())
+                try {
+                    Method pauseMethod = minecraftClient.getClass().getMethod("pause");
+                    pauseMethod.invoke(minecraftClient);
+                    LOGGER.info("Game paused via client");
+                } catch (NoSuchMethodException e) {
+                    // Try alternative
+                    try {
+                        Method setScreen = minecraftClient.getClass().getMethod("setScreen", Object.class);
+                        setScreen.invoke(minecraftClient, (Object) null);
+                    } catch (Exception e2) {
+                        LOGGER.debug("Could not pause via setScreen");
+                    }
+                }
+            }
+            
+            // Also try to pause the server tick
+            if (minecraftServer != null) {
+                try {
+                    // Try to stop the server tick thread
+                    Method halt = minecraftServer.getClass().getMethod("halt", boolean.class);
+                    halt.invoke(minecraftServer, false); // false = don't wait
+                } catch (Exception e) {
+                    LOGGER.debug("Could not halt server");
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Could not pause game: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Save the world.
+     */
+    private boolean saveWorld() {
+        LOGGER.info("Saving world...");
+        
+        try {
+            if (minecraftServer != null) {
+                // Try: server.saveAllChunks(false, true, true)
+                // or: server.getPlayerList().saveAll()
+                // or: server.saveEverything(false, true, true)
+                
+                String[] methodsToTry = {
+                    "saveAllChunks",
+                    "saveEverything", 
+                    "save"
+                };
+                
+                for (String methodName : methodsToTry) {
+                    try {
+                        Method saveMethod = findMethod(minecraftServer.getClass(), methodName);
+                        if (saveMethod != null) {
+                            // Try to invoke with various parameter counts
+                            if (saveMethod.getParameterCount() == 0) {
+                                saveMethod.invoke(minecraftServer);
+                            } else if (saveMethod.getParameterCount() == 3) {
+                                saveMethod.invoke(minecraftServer, false, true, true);
+                            }
+                            LOGGER.info("World saved via {}", methodName);
+                            return true;
+                        }
+                    } catch (Exception e) {
+                        LOGGER.debug("Save method {} failed: {}", methodName, e.getMessage());
+                    }
+                }
+            }
+            
+            LOGGER.warn("Could not save world automatically");
+            return false;
+            
+        } catch (Exception e) {
+            LOGGER.error("Error saving world: {}", e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Find a method by name (ignoring parameter types).
+     */
+    private Method findMethod(Class<?> clazz, String name) {
+        for (Method m : clazz.getMethods()) {
+            if (m.getName().equals(name)) {
+                return m;
+            }
+        }
+        for (Method m : clazz.getDeclaredMethods()) {
+            if (m.getName().equals(name)) {
+                m.setAccessible(true);
+                return m;
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * Show the crash dialog with options.
+     * On servers, logs to console instead.
+     */
+    private void showCrashDialog(String modId, Throwable error, boolean worldSaved) {
+        // Build the message
+        StringBuilder message = new StringBuilder();
+        message.append("RetroMod encountered an error!\n\n");
+        
+        message.append("═══════════════════════════════════════\n");
+        message.append("THE PROBLEM:\n");
+        message.append("═══════════════════════════════════════\n\n");
+        
+        message.append("The mod \"").append(modId).append("\" does not work\n");
+        message.append("correctly with RetroMod.\n\n");
+        
+        message.append("Error: ").append(error.getClass().getSimpleName()).append("\n");
+        if (error.getMessage() != null) {
+            String msg = error.getMessage();
+            if (msg.length() > 100) {
+                msg = msg.substring(0, 100) + "...";
+            }
+            message.append("Details: ").append(msg).append("\n");
+        }
+        message.append("\n");
+        
+        // World save status
+        if (worldSaved) {
+            message.append("✓ Your world has been SAVED automatically.\n\n");
+        } else {
+            message.append("⚠ Could not save world automatically.\n");
+            message.append("  (Your recent progress may be lost)\n\n");
+        }
+        
+        message.append("═══════════════════════════════════════\n");
+        message.append("WHAT YOU CAN DO:\n");
+        message.append("═══════════════════════════════════════\n\n");
+        
+        message.append("1. UNINSTALL \"").append(modId).append("\"\n");
+        message.append("   Remove this mod and continue using RetroMod\n");
+        message.append("   with your other mods.\n\n");
+        
+        message.append("2. FIND AN ALTERNATIVE\n");
+        message.append("   Look for a similar mod that works with your\n");
+        message.append("   Minecraft version, or has been tested with\n");
+        message.append("   RetroMod.\n\n");
+        
+        message.append("3. USE THE ORIGINAL VERSION\n");
+        message.append("   Play on the Minecraft version that\n");
+        message.append("   \"").append(modId).append("\" was designed for.\n\n");
+        
+        message.append("═══════════════════════════════════════\n");
+        
+        // Check if we can show GUI
+        if (EnvironmentDetector.canShowGui()) {
+            showGuiCrashDialog(message.toString());
+        } else {
+            showConsoleCrashMessage(modId, message.toString());
+        }
+    }
+    
+    /**
+     * Show GUI crash dialog (client only).
+     */
+    private void showGuiCrashDialog(String message) {
+        SwingUtilities.invokeLater(() -> {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+            
+            // Show dialog with only a quit button (no continue option)
+            JOptionPane.showOptionDialog(
+                null,
+                message,
+                "RetroMod - Mod Compatibility Error",
+                JOptionPane.DEFAULT_OPTION,
+                JOptionPane.ERROR_MESSAGE,
+                null,
+                new String[]{"Quit Minecraft"},
+                "Quit Minecraft"
+            );
+            
+            // Force quit
+            LOGGER.info("User acknowledged crash - exiting Minecraft");
+            System.exit(1);
+        });
+        
+        // Block this thread while dialog is showing
+        try {
+            Thread.sleep(Long.MAX_VALUE);
+        } catch (InterruptedException ignored) {
+            System.exit(1);
+        }
+    }
+    
+    /**
+     * Show console crash message (server mode).
+     */
+    private void showConsoleCrashMessage(String modId, String message) {
+        LOGGER.error("");
+        LOGGER.error("╔═══════════════════════════════════════════════════════════╗");
+        LOGGER.error("║           RETROMOD - MOD COMPATIBILITY ERROR              ║");
+        LOGGER.error("╠═══════════════════════════════════════════════════════════╣");
+        
+        for (String line : message.split("\n")) {
+            LOGGER.error("║  {}", padRight(line, 56) + "║");
+        }
+        
+        LOGGER.error("╠═══════════════════════════════════════════════════════════╣");
+        LOGGER.error("║  Server will shut down to prevent data corruption.        ║");
+        LOGGER.error("║  Remove the mod \"{}\" and restart.{}", modId, padRight("", 56 - 24 - modId.length()) + "║");
+        LOGGER.error("╚═══════════════════════════════════════════════════════════╝");
+        LOGGER.error("");
+        
+        // Give time to flush logs
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException ignored) {}
+        
+        // Shutdown server
+        LOGGER.error("Shutting down server...");
+        System.exit(1);
+    }
+    
+    /**
+     * Pad string to specified length.
+     */
+    private String padRight(String s, int n) {
+        if (s.length() >= n) return s.substring(0, n);
+        return s + " ".repeat(n - s.length());
+    }
+    
+    /**
+     * Get error count for a mod.
+     */
+    public int getErrorCount(String modId) {
+        return modErrorCounts.getOrDefault(modId, 0);
+    }
+    
+    /**
+     * Check if any crashes have been handled.
+     */
+    public boolean hasCrashOccurred() {
+        return crashHandled.get();
+    }
+}

@@ -1,0 +1,77 @@
+# Build output
+target/
+build/
+dist/
+out/
+*.jar
+!gradle/wrapper/*.jar
+
+# Gradle
+.gradle/
+gradle/wrapper/gradle-wrapper.jar
+
+# Maven
+*.log
+dependency-reduced-pom.xml
+
+# IDE - IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# IDE - Eclipse
+.classpath
+.project
+.settings/
+bin/
+
+# IDE - VS Code
+.vscode/
+
+# IDE - NetBeans
+nbproject/
+nbbuild/
+nbdist/
+nbactions.xml
+nb-configuration.xml
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Java
+hs_err_pid*
+replay_pid*
+
+# Runtime
+run/
+logs/
+config/retromod/
+retromod-input/
+retromod-backups/
+
+# Roadmap
+roadmap*
+ROADMAP*
+
+# Misc
+*.bak
+*.tmp
+*.swp

@@ -1,0 +1,81 @@
+# RetroMod Version Shims - ServiceLoader configuration
+# Copyright (c) 2026 Bownlux
+
+# Fabric shims (1.21.x chain)
+com.retromod.shim.fabric.Fabric_1_21_to_1_21_1
+com.retromod.shim.fabric.Fabric_1_21_1_to_1_21_2
+com.retromod.shim.fabric.Fabric_1_21_2_to_1_21_3
+com.retromod.shim.fabric.Fabric_1_21_3_to_1_21_4
+com.retromod.shim.fabric.Fabric_1_21_4_to_1_21_5
+com.retromod.shim.fabric.Fabric_1_21_5_to_1_21_6
+com.retromod.shim.fabric.Fabric_1_21_6_to_1_21_7
+com.retromod.shim.fabric.Fabric_1_21_7_to_1_21_8
+com.retromod.shim.fabric.Fabric_1_21_8_to_1_21_9
+com.retromod.shim.fabric.Fabric_1_21_9_to_1_21_10
+com.retromod.shim.fabric.Fabric_1_21_10_to_1_21_11
+
+# NeoForge shims (1.21.x chain)
+com.retromod.shim.neoforge.NeoForge_1_21_to_1_21_1
+com.retromod.shim.neoforge.NeoForge_1_21_1_to_1_21_2
+com.retromod.shim.neoforge.NeoForge_1_21_2_to_1_21_3
+com.retromod.shim.neoforge.NeoForge_1_21_3_to_1_21_4
+com.retromod.shim.neoforge.NeoForge_1_21_4_to_1_21_5
+com.retromod.shim.neoforge.NeoForge_1_21_5_to_1_21_6
+com.retromod.shim.neoforge.NeoForge_1_21_6_to_1_21_7
+com.retromod.shim.neoforge.NeoForge_1_21_7_to_1_21_8
+com.retromod.shim.neoforge.NeoForge_1_21_8_to_1_21_9
+com.retromod.shim.neoforge.NeoForge_1_21_9_to_1_21_10
+com.retromod.shim.neoforge.NeoForge_1_21_10_to_1_21_11
+
+# Forge shims (1.20.x → NeoForge 1.21)
+com.retromod.shim.forge.Forge_1_20_to_NeoForge_1_21
+
+# Forge shims (1.21.x chain)
+com.retromod.shim.forge.Forge_1_21_to_1_21_1
+com.retromod.shim.forge.Forge_1_21_1_to_1_21_2
+com.retromod.shim.forge.Forge_1_21_2_to_1_21_3
+com.retromod.shim.forge.Forge_1_21_3_to_1_21_4
+com.retromod.shim.forge.Forge_1_21_4_to_1_21_5
+com.retromod.shim.forge.Forge_1_21_5_to_1_21_6
+com.retromod.shim.forge.Forge_1_21_6_to_1_21_7
+com.retromod.shim.forge.Forge_1_21_7_to_1_21_8
+com.retromod.shim.forge.Forge_1_21_8_to_1_21_9
+com.retromod.shim.forge.Forge_1_21_9_to_1_21_10
+com.retromod.shim.forge.Forge_1_21_10_to_1_21_11
+
+# ============================================================
+# POPULAR API SHIMS
+# These handle changes in commonly used mod libraries
+# ============================================================
+
+# Fabric API shims (networking, registry, rendering, etc.)
+com.retromod.shim.api.fabric.FabricApiShim
+com.retromod.shim.api.fabric.ModMenuApiShim
+com.retromod.shim.api.fabric.ClothConfigApiShim
+com.retromod.shim.api.fabric.ReiApiShim
+com.retromod.shim.api.fabric.TrinketsApiShim
+com.retromod.shim.api.fabric.CardinalComponentsApiShim
+com.retromod.shim.api.fabric.SodiumIrisApiShim
+com.retromod.shim.api.fabric.OwoLibApiShim
+com.retromod.shim.api.fabric.LibGuiApiShim
+com.retromod.shim.api.fabric.EmiApiShim
+com.retromod.shim.api.fabric.ForgeConfigApiPortShim
+
+# Forge/NeoForge API shims
+com.retromod.shim.api.forge.JeiApiShim
+com.retromod.shim.api.forge.CuriosApiShim
+com.retromod.shim.api.forge.ForgeCapabilitiesShim
+com.retromod.shim.api.forge.MekanismApiShim
+com.retromod.shim.api.forge.ForgeConfigApiShim
+com.retromod.shim.api.forge.ForgeEventApiShim
+com.retromod.shim.api.forge.ForgeRegistryApiShim
+
+# Cross-loader API shims (work on both Fabric and Forge/NeoForge)
+com.retromod.shim.api.common.GeckoLibApiShim
+com.retromod.shim.api.common.ArchitecturyApiShim
+com.retromod.shim.api.common.PatchouliApiShim
+com.retromod.shim.api.common.CreateModApiShim
+com.retromod.shim.api.common.YaclApiShim
+com.retromod.shim.api.common.JadeWailaApiShim
+com.retromod.shim.api.common.Ae2ApiShim
+com.retromod.shim.api.common.BotaniaApiShim

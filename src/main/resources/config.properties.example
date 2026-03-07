@@ -1,0 +1,156 @@
+# RetroMod Configuration
+# Place this file at: config/retromod/config.properties
+
+# =============================================================
+# COMPILATION MODE
+# =============================================================
+
+# Enable AOT (Ahead-of-Time) compilation
+# When true, mods are pre-transformed on first launch for faster subsequent loads
+# Default: true
+use_aot=true
+
+# Enable Hybrid compilation (partial AOT with JIT fallback)
+# When true, only specific code regions that can't be analyzed get JIT
+# When false, entire classes fall back to JIT if any part is problematic
+# Default: true (recommended)
+use_hybrid=true
+
+# Enable instruction-level granularity for partial AOT
+# When true, individual instructions can be marked for JIT
+# When false, entire methods are marked for JIT
+# Default: true (recommended for best performance)
+instruction_level_granularity=true
+
+# =============================================================
+# MIXIN COMPATIBILITY
+# =============================================================
+
+# Transform Mixin targets to use new method/class names
+# Essential for mods using Mixins that target renamed methods
+# Default: true
+transform_mixins=true
+
+# Transform refmap files in Mixin mods
+# Default: true
+transform_refmaps=true
+
+# =============================================================
+# REFLECTION HANDLING
+# =============================================================
+
+# Enable reflection remapping
+# Intercepts reflection calls and remaps old names to new ones
+# Default: true
+remap_reflection=true
+
+# Cache reflection remapping results
+# Improves performance for repeated reflection calls
+# Default: true
+cache_reflection=true
+
+# =============================================================
+# API ARCHIVE
+# =============================================================
+
+# Auto-download missing API archives
+# When true, RetroMod will download old Fabric/NeoForge API JARs as needed
+# Default: false (requires manual setup)
+auto_download_archives=false
+
+# API archive directory
+# Location where old mod loader API JARs are stored
+# Default: config/retromod/api-archive
+archive_directory=config/retromod/api-archive
+
+# =============================================================
+# CACHING
+# =============================================================
+
+# AOT cache directory
+# Where pre-compiled mods are stored
+# Default: config/retromod/aot-cache
+aot_cache_directory=config/retromod/aot-cache
+
+# Validate cache on startup
+# Check that cached mods haven't changed
+# Default: true
+validate_cache=true
+
+# Clear cache on version mismatch
+# When true, cache is cleared if RetroMod version changes
+# Default: true
+clear_cache_on_upgrade=true
+
+# =============================================================
+# LOGGING
+# =============================================================
+
+# Log level: ERROR, WARN, INFO, DEBUG, TRACE
+# Default: INFO
+log_level=INFO
+
+# Log transformation details
+# Shows which methods/classes are being transformed
+# Default: false
+log_transformations=false
+
+# Log shim chain resolution
+# Shows how version transitions are resolved
+# Default: false
+log_shim_chains=false
+
+# =============================================================
+# PERFORMANCE
+# =============================================================
+
+# Number of threads for batch AOT compilation
+# Set to 0 for automatic (CPU cores - 1)
+# Default: 0
+aot_threads=0
+
+# Maximum memory for AOT compilation (MB)
+# Default: 512
+aot_max_memory=512
+
+# =============================================================
+# COMPATIBILITY
+# =============================================================
+
+# Target Minecraft version
+# The version mods will be transformed to run on
+# Default: auto-detect from game
+target_mc_version=auto
+
+# Supported mod loaders (comma-separated)
+# Default: fabric,neoforge
+supported_loaders=fabric,neoforge
+
+# Skip mods matching these patterns (regex, comma-separated)
+# Default: none
+skip_patterns=
+
+# Force transform mods matching these patterns (regex, comma-separated)
+# Even if they appear compatible
+# Default: none
+force_transform_patterns=
+
+# =============================================================
+# ADVANCED
+# =============================================================
+
+# Enable experimental features
+# Default: false
+experimental=false
+
+# Debug mode - extra validation and logging
+# Default: false
+debug=false
+
+# Dump transformed bytecode to disk for inspection
+# Default: false
+dump_bytecode=false
+
+# Bytecode dump directory
+# Default: config/retromod/bytecode-dump
+dump_directory=config/retromod/bytecode-dump

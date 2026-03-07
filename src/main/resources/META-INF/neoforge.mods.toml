@@ -1,0 +1,40 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "MIT"
+issueTrackerURL = "https://github.com/Bownlux/MC-RetroMod/issues"
+
+[[mods]]
+modId = "retromod"
+version = "${version}"
+displayName = "RetroMod"
+description = '''
+Made by the Developers of revivalsmp.net
+
+Backwards compatibility layer for Minecraft mods.
+Run older mods on newer Minecraft versions automatically!
+
+Supports:
+- NeoForge 1.21.x cross-version compatibility
+- Forge 1.20.x to NeoForge 1.21.x transformation
+- Legacy Forge 1.8-1.12 to 1.21.x (experimental)
+
+Just drop your old mods in - RetroMod transforms them automatically!
+
+Made by the Developers of revivalsmp.net
+'''
+authors = "Bownlux"
+logoFile = "assets/retromod/icon.png"
+
+[[dependencies.retromod]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.retromod]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21,)"
+ordering = "NONE"
+side = "BOTH"
