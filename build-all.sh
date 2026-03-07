@@ -57,39 +57,29 @@ else
     echo "[Step 1/4] Skipping Maven build (--skip-build flag)"
 fi
 
-# Find the built JAR (handle different naming)
-BASE_JAR=""
-if [ -f "target/retromod-${VERSION}.jar" ]; then
-    BASE_JAR="target/retromod-${VERSION}.jar"
-elif [ -f "target/retromod.jar" ]; then
-    BASE_JAR="target/retromod.jar"
+# Find the shaded JAR (with all dependencies bundled)
+SHADED_JAR=""
+if [ -f "target/retromod-${VERSION}-all.jar" ]; then
+    SHADED_JAR="target/retromod-${VERSION}-all.jar"
 else
-    # Find any jar that's not sources/javadoc/agent/all
-    BASE_JAR=$(find target -maxdepth 1 -name "retromod*.jar" -not -name "*sources*" -not -name "*javadoc*" -not -name "*agent*" -not -name "*all*" | head -1)
+    # Fallback: find any -all.jar
+    SHADED_JAR=$(find target -maxdepth 1 -name "retromod*-all.jar" | head -1)
 fi
 
-if [ -z "$BASE_JAR" ] || [ ! -f "$BASE_JAR" ]; then
-    echo "ERROR: Base build failed! No JAR found in target/"
+if [ -z "$SHADED_JAR" ] || [ ! -f "$SHADED_JAR" ]; then
+    echo "ERROR: Shaded JAR not found in target/"
+    echo "Make sure maven-shade-plugin ran successfully."
     echo "Build failed"
     exit 1
 fi
 
-echo "  Base JAR: $BASE_JAR"
+echo "  Shaded JAR: $SHADED_JAR (with bundled dependencies)"
 
 echo ""
 echo "[Step 2/4] Creating CLI tool..."
 
-# Find the shaded/all JAR for CLI, or use base JAR
-CLI_JAR=""
-if [ -f "target/retromod-${VERSION}-all.jar" ]; then
-    CLI_JAR="target/retromod-${VERSION}-all.jar"
-elif [ -f "target/retromod-${VERSION}-shaded.jar" ]; then
-    CLI_JAR="target/retromod-${VERSION}-shaded.jar"
-else
-    CLI_JAR="$BASE_JAR"
-fi
-
-cp "$CLI_JAR" "dist/CLI/retromod-${VERSION}-cli.jar"
+# CLI is the shaded JAR directly
+cp "$SHADED_JAR" "dist/CLI/retromod-${VERSION}-cli.jar"
 echo "  dist/CLI/retromod-${VERSION}-cli.jar"
 
 echo ""
@@ -146,9 +136,9 @@ create_mod_jar() {
     # Create temp directory
     local TEMP_DIR=$(mktemp -d)
 
-    # Extract base JAR
-    unzip -q "$BASE_JAR" -d "$TEMP_DIR" 2>/dev/null || {
-        echo "ERROR: Failed to extract base JAR"
+    # Extract shaded JAR (includes all dependencies like ASM, Gson, TOML4J)
+    unzip -q "$SHADED_JAR" -d "$TEMP_DIR" 2>/dev/null || {
+        echo "ERROR: Failed to extract shaded JAR"
         rm -rf "$TEMP_DIR"
         return 1
     }

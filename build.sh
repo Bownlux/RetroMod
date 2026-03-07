@@ -53,19 +53,24 @@ echo "[5/5] Creating distribution packages..."
 # Create dist folder
 mkdir -p dist
 
-# The main shaded JAR becomes the CLI tool
-if [ -f "target/retromod-${VERSION}-all.jar" ]; then
-    cp "target/retromod-${VERSION}-all.jar" "dist/retromod-${VERSION}-cli.jar"
-    echo "  ✓ CLI tool: dist/retromod-${VERSION}-cli.jar"
+# The shaded JAR (with all dependencies) is our base for everything
+SHADED_JAR="target/retromod-${VERSION}-all.jar"
+if [ ! -f "$SHADED_JAR" ]; then
+    echo "ERROR: Shaded JAR not found at $SHADED_JAR"
+    echo "Make sure maven-shade-plugin ran successfully."
+    exit 1
 fi
+
+cp "$SHADED_JAR" "dist/retromod-${VERSION}-cli.jar"
+echo "  ✓ CLI tool: dist/retromod-${VERSION}-cli.jar"
 
 # Create Fabric mod JAR (includes fabric.mod.json, excludes neoforge stuff)
 echo "  Creating Fabric mod..."
 mkdir -p target/fabric-build
 cd target/fabric-build
 
-# Extract the base JAR
-jar xf "../retromod-${VERSION}.jar"
+# Extract the SHADED JAR (includes all dependencies)
+jar xf "../retromod-${VERSION}-all.jar"
 
 # Remove NeoForge-specific files
 rm -rf META-INF/neoforge.mods.toml 2>/dev/null || true
@@ -81,8 +86,8 @@ echo "  Creating NeoForge mod..."
 mkdir -p target/neoforge-build
 cd target/neoforge-build
 
-# Extract the base JAR
-jar xf "../retromod-${VERSION}.jar"
+# Extract the SHADED JAR (includes all dependencies)
+jar xf "../retromod-${VERSION}-all.jar"
 
 # Remove Fabric-specific files
 rm -f fabric.mod.json 2>/dev/null || true
@@ -113,14 +118,7 @@ echo ""
 echo "Output files in dist/:"
 ls -lh dist/
 echo ""
-echo "Upload to Modrinth:"
-echo "  - Fabric users:   retromod-${VERSION}-fabric.jar"
-echo "  - NeoForge users: retromod-${VERSION}-neoforge.jar"
-echo ""
-echo "For CLI users (power users):"
-echo "  - All platforms:  retromod-${VERSION}-cli.jar"
-echo ""
 echo "Usage:"
-echo "  CLI:     java -jar retromod-${VERSION}-cli.jar <command>"
-echo "  Fabric:  Drop in mods/ folder with Fabric Loader"
-echo "  NeoForge: Drop in mods/ folder with NeoForge"
+echo "  CLI:      java -jar dist/retromod-${VERSION}-cli.jar <command>"
+echo "  Fabric:   Drop dist/retromod-${VERSION}-fabric.jar in mods/"
+echo "  NeoForge: Drop dist/retromod-${VERSION}-neoforge.jar in mods/"

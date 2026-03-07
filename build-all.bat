@@ -44,14 +44,15 @@ if %SKIP_BUILD%==0 (
     )
 )
 
-REM Find the built JAR
-set BASE_JAR=target\retromod-%VERSION%.jar
-if not exist "%BASE_JAR%" (
-    echo ERROR: Base build failed! No JAR found at %BASE_JAR%
+REM Find the shaded JAR (with all dependencies bundled)
+set SHADED_JAR=target\retromod-%VERSION%-all.jar
+if not exist "%SHADED_JAR%" (
+    echo ERROR: Shaded JAR not found at %SHADED_JAR%
+    echo Make sure maven-shade-plugin ran successfully.
     exit /b 1
 )
 
-echo   Base JAR: %BASE_JAR%
+echo   Shaded JAR: %SHADED_JAR% (with bundled dependencies)
 
 REM Create output directories
 mkdir dist\Fabric 2>nul
@@ -62,9 +63,7 @@ mkdir dist\CLI 2>nul
 echo.
 echo [Step 2] Creating CLI tool...
 
-set CLI_JAR=target\retromod-%VERSION%-all.jar
-if not exist "%CLI_JAR%" set CLI_JAR=%BASE_JAR%
-copy /Y "%CLI_JAR%" "dist\CLI\retromod-%VERSION%-cli.jar" >nul
+copy /Y "%SHADED_JAR%" "dist\CLI\retromod-%VERSION%-cli.jar" >nul
 echo   Created: dist\CLI\retromod-%VERSION%-cli.jar
 
 echo.
@@ -143,9 +142,9 @@ set TEMP_DIR=%TEMP%\retromod-build-%LOADER%-%MC_VERSION%
 if exist "%TEMP_DIR%" rmdir /s /q "%TEMP_DIR%"
 mkdir "%TEMP_DIR%"
 
-REM Extract base JAR
+REM Extract shaded JAR (includes all dependencies like ASM, Gson, TOML4J)
 cd /d "%TEMP_DIR%"
-jar xf "%~dp0%BASE_JAR%" 2>nul
+jar xf "%~dp0%SHADED_JAR%" 2>nul
 if %ERRORLEVEL% neq 0 (
     echo   FAILED: %MC_VERSION%
     set /a FAILED+=1
