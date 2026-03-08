@@ -142,7 +142,7 @@ All intermediate versions are supported. RetroMod uses fuzzy version matching, s
 
 ---
 
-Made by **Bownlux** -- part of the team behind **[RevivalSMP.net](https://revivalsmp.net)**, a lifesteal survival server with a player-run economy. Come check it out!
+Made by **Bownlux** -- part of the team behind **[RevivalSMP.net](https://revivalsmp.net)**
 
 ---
 ---
