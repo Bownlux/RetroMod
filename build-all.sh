@@ -28,10 +28,46 @@ echo "  - ${#MC_VERSIONS[@]} Minecraft versions (1.12.2 - 1.21.11)"
 echo "  - ${#LOADERS[@]} mod loaders (Fabric, Forge, NeoForge)"
 echo ""
 
+# ---- Pre-flight checks ----
+
 # Check for Maven
 if ! command -v mvn &> /dev/null; then
     echo "ERROR: Maven not found!"
     echo "Install: https://maven.apache.org/install.html"
+    exit 1
+fi
+
+# Check for Java 21+
+if command -v java &> /dev/null; then
+    JAVA_VER=$(java -version 2>&1 | head -1 | cut -d'"' -f2 | cut -d'.' -f1)
+    if [ "$JAVA_VER" -lt 21 ] 2>/dev/null; then
+        echo "ERROR: Java 21 or later is required! You have Java $JAVA_VER."
+        echo "Install from: https://adoptium.net/"
+        exit 1
+    fi
+else
+    echo "ERROR: Java not found! Java 21+ is required."
+    echo "Install from: https://adoptium.net/"
+    exit 1
+fi
+
+# Check for unzip (needed to extract JARs)
+if ! command -v unzip &> /dev/null; then
+    echo "ERROR: 'unzip' is not installed!"
+    echo "Install it:"
+    echo "  Ubuntu/Debian: sudo apt install unzip"
+    echo "  Fedora/RHEL:   sudo dnf install unzip"
+    echo "  macOS:         brew install unzip (or it's usually pre-installed)"
+    exit 1
+fi
+
+# Check for zip (needed to create JARs)
+if ! command -v zip &> /dev/null; then
+    echo "ERROR: 'zip' is not installed!"
+    echo "Install it:"
+    echo "  Ubuntu/Debian: sudo apt install zip"
+    echo "  Fedora/RHEL:   sudo dnf install zip"
+    echo "  macOS:         brew install zip (or it's usually pre-installed)"
     exit 1
 fi
 

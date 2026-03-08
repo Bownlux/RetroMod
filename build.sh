@@ -19,17 +19,28 @@ echo "  MIT License - RevivalSMP"
 echo "============================================"
 echo ""
 
+# ---- Pre-flight checks ----
+
 # Check for Maven
 if ! command -v mvn &> /dev/null; then
     echo "ERROR: Maven not found!"
-    echo "Please install Maven: https://maven.apache.org/install.html"
+    echo "Install: https://maven.apache.org/install.html"
     exit 1
 fi
 
-# Check for Java 21
-JAVA_VERSION=$(java -version 2>&1 | head -1 | cut -d'"' -f2 | cut -d'.' -f1)
-if [ "$JAVA_VERSION" -lt 21 ] 2>/dev/null; then
-    echo "Warning: Could not verify Java version"
+# Check for Java 21+
+if command -v java &> /dev/null; then
+    JAVA_VER=$(java -version 2>&1 | head -1 | cut -d'"' -f2 | cut -d'.' -f1)
+    if [ "$JAVA_VER" -lt 21 ] 2>/dev/null; then
+        echo "ERROR: Java 21 or later is required! You have Java $JAVA_VER."
+        echo "Install from: https://adoptium.net/"
+        exit 1
+    fi
+    echo "Using Java $JAVA_VER"
+else
+    echo "ERROR: Java not found! Java 21+ is required."
+    echo "Install from: https://adoptium.net/"
+    exit 1
 fi
 
 echo "Building RetroMod..."
