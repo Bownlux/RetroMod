@@ -36,7 +36,7 @@ RetroMod is a drop-in Minecraft mod that transforms older mod bytecode at load t
 3. Launch the game — RetroMod transforms incompatible mods and updates their `mods.toml`
 4. Restart when prompted — done!
 
-> Originals are backed up to `mods/retromod-backups/`. Even Forge mods work on NeoForge!
+> Originals are backed up to `mods/retromod-backups/`.
 
 ### Uninstalling
 
@@ -54,7 +54,7 @@ RetroMod is a drop-in Minecraft mod that transforms older mod bytecode at load t
 - **API Embedding** — Removed APIs are bundled as shim classes directly into mod JARs
 - **Mixin Compatibility** — Transforms `@Inject`, `@Redirect`, `@Shadow`, `@Accessor` targets
 - **Reflection Remapping** — Intercepts `Class.forName()` and `Method.invoke()` calls
-- **Multi-Loader** — Fabric, NeoForge, and Forge (including Forge→NeoForge migration)
+- **Multi-Loader** — Fabric, NeoForge, and Forge (experimental Forge→NeoForge migration for simple mods)
 - **Multi-Architecture** — x86_64, ARM64/Apple Silicon, and more
 - **Rendering Future-Proofing** — Ready for Vulkan, Metal, and DirectX transitions
 
@@ -66,7 +66,7 @@ Shims are **chainable** — a 1.12.2 Forge mod can run on 1.21.11 by applying ea
 |--------|-------|-------|-----------|
 | **Fabric** | 31 | 1.14 → ... → 1.21.11 | 1.16.5+: Beta, 1.14–1.15: Alpha |
 | **NeoForge** | 17 | 1.20.1 → ... → 1.21.11 | Beta |
-| **Forge** | 27 | 1.12.2 → ... → 1.20 → 1.21 (NeoForge) → ... → 1.21.11 | 1.16.5+: Beta, 1.12–1.15: Alpha |
+| **Forge** | 27 | 1.12.2 → ... → 1.20 → 1.21 (NeoForge*) → ... → 1.21.11 | 1.16.5+: Beta, 1.12–1.15: Alpha |
 
 > **Fuzzy version matching:** If a mod targets an intermediate version like 1.16.2 or 1.14.3, RetroMod automatically resolves it to the nearest milestone shim. This means every MC version from 1.12.2 to 1.21.11 is supported, even versions without their own dedicated shim.
 
@@ -149,6 +149,74 @@ Transform classes at runtime instead of pre-transforming JARs:
 ```bash
 java -javaagent:retromod-agent.jar -jar minecraft.jar
 ```
+
+---
+
+## CLI vs Mod — Which Should You Use?
+
+RetroMod comes in two forms: a **standalone CLI tool** and an **in-game mod**. Both do the same bytecode transformations, but they work differently.
+
+| | CLI Tool | In-Game Mod |
+|---|---------|-------------|
+| **How it works** | You run it manually before launching Minecraft. Transforms mods ahead-of-time (AOT). | Drops into your `mods/` folder. Transforms mods automatically on first launch. |
+| **When transforms happen** | Before Minecraft starts | During Minecraft's loading phase |
+| **Runtime overhead** | None — mods are already transformed | Minimal — AOT on first launch, JIT fallback for edge cases |
+| **Ease of use** | Requires command-line knowledge | Just drop it in `mods/` |
+| **Server-friendly** | Great for prepping mods before deploying to a server | Works on servers too, but first launch takes longer |
+| **Batch processing** | Yes — `batch` and `prepare` commands | No — one instance at a time |
+| **Debugging** | `analyze`, `diff`, `devhelp` commands | Config-based (`log_level`, `dump_bytecode`) |
+
+### When to use the CLI
+
+- You want **zero runtime overhead** — all transforms happen before the game starts
+- You're setting up a **server** and want everything pre-transformed
+- You want to **analyze or debug** a mod before loading it
+- You're a **mod developer** using `devhelp` to see what API changes to make
+
+### When to use the Mod
+
+- You want a **simple drop-in experience** — no command line needed
+- You want RetroMod to **automatically detect and transform** old mods
+- You don't mind a slightly longer first launch while transforms are compiled
+- You want the **JIT fallback** for edge cases that AOT might miss
+
+> **You can use both.** Pre-transform heavy mods with the CLI, then use the in-game mod as a safety net for anything the CLI missed.
+
+---
+
+## Performance Impact
+
+RetroMod's bytecode transformations have a cost. Here's what to expect:
+
+### During Transformation (First Launch / CLI)
+
+| What | Impact | Duration |
+|------|--------|----------|
+| **AOT compilation** | High CPU, moderate RAM (+200–500 MB) | One-time — 5–30 seconds per mod depending on size |
+| **Shim embedding** | Moderate CPU | One-time — adds shim classes to mod JARs |
+| **Mixin target rewriting** | Moderate CPU | One-time — scans and rewrites annotation targets |
+
+The first launch with the in-game mod will be noticeably slower (30 seconds to a few minutes depending on how many mods you have). After that, **everything is cached** and future launches are normal speed.
+
+> **Tip:** Use the CLI's `batch` or `prepare` command to pre-transform all mods. This way, Minecraft launches at normal speed from the first boot.
+
+### During Gameplay
+
+| Mode | Impact | Notes |
+|------|--------|-------|
+| **AOT (pre-transformed)** | No impact | Mods are already rewritten — same as running native mods |
+| **JIT fallback** | Minor CPU spikes | Only triggers when a class is loaded that AOT missed. Rare — typically <1% of classes. Each JIT transform takes 1–10 ms. |
+| **Reflection remapping** | Negligible | Intercepts `Class.forName()` / `Method.invoke()` calls — adds microseconds per call |
+
+For most users, **gameplay performance is identical to running native mods.** The JIT fallback is rare and brief. If you notice stutters, pre-transform with the CLI to eliminate all JIT hits.
+
+### Memory Usage
+
+- **RetroMod itself:** ~10–20 MB of additional memory for the shim registry and transformation engine
+- **Embedded shims:** Each transformed mod grows by 50–200 KB (the shim classes added to the JAR)
+- **JIT cache:** If JIT triggers, transformed classes are cached in memory — typically <5 MB total
+
+> **Bottom line:** After the first launch, RetroMod has virtually no performance impact. If you want zero overhead, use the CLI to pre-transform everything.
 
 ---
 
@@ -257,9 +325,12 @@ public class Fabric_X_to_Y implements VersionShim {
 1. Cannot transform already-loaded classes without Java Agent mode
 2. Complex Mixins may need manual shim updates for non-standard patterns
 3. **Alpha:** Legacy mods (1.12.2–1.15.2) may be unstable — especially mods crossing "The Flattening" (1.12→1.13) which renamed every block, entity, and NBT class
-4. Cross-loader mods (Forge mod on Fabric) are not supported
-5. Rendering backend shims activate only when MC actually switches backends
-6. Very old mods using Java 8 reflection patterns may need additional shim work
+4. **Forge→NeoForge migration is experimental.** RetroMod can remap basic package names (`net.minecraftforge.*` → `net.neoforged.*`), but NeoForge has diverged significantly from Forge — the capability system, networking, and many internal APIs were completely rewritten, not just renamed. Simple Forge mods may work on NeoForge, but complex mods that deeply use Forge's systems will likely not work.
+5. Cross-loader mods (Forge mod on Fabric) are not supported
+6. Rendering backend shims activate only when MC actually switches backends
+7. Very old mods using Java 8 reflection patterns may need additional shim work
+8. **RetroMod cannot fix Java version mismatches.** If a mod was compiled for a newer Java version than you have installed (e.g., a mod requiring Java 25 on a Java 21 system), the JVM will refuse to load it with `UnsupportedClassVersionError` before RetroMod can do anything. RetroMod transforms Minecraft API changes, not Java version differences. You need the correct Java version installed.
+9. **Mod configs** generally work, but if a mod's config system changed between versions (e.g., old Forge `.cfg` → new `.toml`), you may need to delete the old config file and let the mod regenerate it
 
 ## Contributing
 

@@ -75,6 +75,9 @@ retromod-backups/
 roadmap*
 ROADMAP*
 
+# Modrinth (separate page content, not part of the GitHub repo)
+MODRINTH_GUIDE*
+
 # Misc
 *.bak
 *.tmp

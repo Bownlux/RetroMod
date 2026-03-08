@@ -123,6 +123,9 @@ RetroMod embeds compatibility shims for many legacy APIs. If a mod calls an old 
 **What about intermediate versions like 1.16.2 or 1.14.1?**
 All intermediate versions are supported. RetroMod uses fuzzy version matching, so a mod targeting 1.16.2, 1.17.1, 1.18.1, etc. will be matched to the nearest shim chain and transformed correctly. You don't need to worry about exact version numbers.
 
+**Does RetroMod fix Java version mismatches?**
+**No.** RetroMod transforms Minecraft API changes, not Java version differences. If a mod was compiled for a newer Java version than you have installed (e.g., a mod that requires Java 25 but you only have Java 21), the JVM will refuse to load it with `UnsupportedClassVersionError` before RetroMod can do anything. You need the correct Java version installed. This is a JVM limitation that no mod can work around.
+
 ---
 
 ## Uninstalling
@@ -190,13 +193,12 @@ When creating a new version on Modrinth:
 - 1.20.1, 1.20.2, 1.20.3, 1.20.4, 1.20.5, 1.20.6
 - 1.21, 1.21.1, 1.21.2, 1.21.3, 1.21.4, 1.21.5, 1.21.6, 1.21.7, 1.21.8, 1.21.9, 1.21.10, 1.21.11
 
-> **Note:** There is no separate Forge jar. Old Forge mods on NeoForge are handled by RetroMod's Forge-to-NeoForge migration shim. Forge users on 1.12.2-1.20 can use the NeoForge jar with NeoForge, or use the CLI tool to pre-transform their mods.
+> **Note:** Forge→NeoForge migration is **experimental**. RetroMod can remap basic Forge package names to NeoForge equivalents, but NeoForge has diverged significantly from Forge (capability system, networking, and many APIs were rewritten). Simple Forge mods may work on NeoForge, but complex mods likely will not. Forge users on 1.12.2–1.20 can use the CLI tool to pre-transform their mods.
 
 ### 4. Loaders to Select
 
 - Fabric
 - NeoForge
-- Forge (mark as supported even though there's no separate Forge jar -- RetroMod handles Forge mods via the NeoForge jar)
 
 ### 5. Suggested Categories and Tags
 
@@ -224,7 +226,7 @@ Use this format for each release:
 
 ### Supported Versions
 - Fabric: 1.14 - 1.21.11
-- Forge: 1.12.2 - 1.21.11 (via NeoForge migration)
+- Forge: 1.12.2 - 1.20 (experimental Forge→NeoForge for simple mods)
 - NeoForge: 1.20.1 - 1.21.11
 
 ### What's New
