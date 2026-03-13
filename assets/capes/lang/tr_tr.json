@@ -1,0 +1,11 @@
+{
+  "options.capes.title": "Pelerin Ayarları",
+  "options.capes.capetype": "Pelerin Türü: %s",
+  "options.capes.optifineeditor": "OptiFine Pelerin Düzenleyici",
+  "options.capes.elytra": "Elitrada Pelerin Dokusu",
+  "options.capes.selector": "Pelerin Seçici",
+  "options.capes.toggle": "Aç/Kapa",
+  "options.capes.other": "Diğer",
+  "options.capes.selector.elytra": "Elitra Aç/Kapa",
+  "options.capes.selector.player": "Oyuncu Aç/Kapa"
+}

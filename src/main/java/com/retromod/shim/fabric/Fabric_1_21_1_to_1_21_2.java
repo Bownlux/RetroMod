@@ -47,7 +47,49 @@ public class Fabric_1_21_1_to_1_21_2 implements VersionShim {
     
     @Override
     public void registerRedirects(RetroModTransformer transformer) {
-        
+
+        // ============================================================
+        // GAME VERSION CHANGES
+        // GameVersion (class_6489) became a record — getName()/getId()
+        // replaced with record component accessors comp_4025/comp_4024
+        // ============================================================
+
+        // getName() -> comp_4025() (version display name, e.g. "1.21.2")
+        transformer.registerMethodRedirect(
+            "net/minecraft/class_6489", "getName", "()Ljava/lang/String;",
+            "net/minecraft/class_6489", "comp_4025", "()Ljava/lang/String;"
+        );
+
+        // getId() -> comp_4024() (version id)
+        transformer.registerMethodRedirect(
+            "net/minecraft/class_6489", "getId", "()Ljava/lang/String;",
+            "net/minecraft/class_6489", "comp_4024", "()Ljava/lang/String;"
+        );
+
+        // getReleaseTarget() -> comp_4025() (closest equivalent)
+        transformer.registerMethodRedirect(
+            "net/minecraft/class_6489", "getReleaseTarget", "()Ljava/lang/String;",
+            "net/minecraft/class_6489", "comp_4025", "()Ljava/lang/String;"
+        );
+
+        // getWorldVersion() -> comp_4027() (data version int)
+        transformer.registerMethodRedirect(
+            "net/minecraft/class_6489", "getWorldVersion", "()I",
+            "net/minecraft/class_6489", "comp_4027", "()I"
+        );
+
+        // getBuildTime() -> comp_4030()
+        transformer.registerMethodRedirect(
+            "net/minecraft/class_6489", "getBuildTime", "()Ljava/util/Date;",
+            "net/minecraft/class_6489", "comp_4030", "()Ljava/util/Date;"
+        );
+
+        // isStable() -> comp_4031()
+        transformer.registerMethodRedirect(
+            "net/minecraft/class_6489", "isStable", "()Z",
+            "net/minecraft/class_6489", "comp_4031", "()Z"
+        );
+
         // ============================================================
         // IDENTIFIER CHANGES
         // new Identifier(...) -> Identifier.of(...)

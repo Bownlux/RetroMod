@@ -99,7 +99,27 @@ public class RetroModCli {
     }
     
     private static void registerAllShims() {
-        // Fabric shims - complete 1.21 to 1.21.11 chain
+        // Fabric shims - complete 1.14.4 to 1.21.11 chain
+        shimRegistry.register(new Fabric_1_14_4_to_1_15_2());
+        shimRegistry.register(new Fabric_1_15_2_to_1_16_5());
+        shimRegistry.register(new Fabric_1_16_5_to_1_17());
+        shimRegistry.register(new Fabric_1_17_to_1_17_1());
+        shimRegistry.register(new Fabric_1_17_1_to_1_18());
+        shimRegistry.register(new Fabric_1_18_to_1_18_1());
+        shimRegistry.register(new Fabric_1_18_1_to_1_18_2());
+        shimRegistry.register(new Fabric_1_18_2_to_1_19());
+        shimRegistry.register(new Fabric_1_19_to_1_19_1());
+        shimRegistry.register(new Fabric_1_19_1_to_1_19_2());
+        shimRegistry.register(new Fabric_1_19_2_to_1_19_3());
+        shimRegistry.register(new Fabric_1_19_3_to_1_19_4());
+        shimRegistry.register(new Fabric_1_19_4_to_1_20());
+        shimRegistry.register(new Fabric_1_20_to_1_20_1());
+        shimRegistry.register(new Fabric_1_20_1_to_1_20_2());
+        shimRegistry.register(new Fabric_1_20_2_to_1_20_3());
+        shimRegistry.register(new Fabric_1_20_3_to_1_20_4());
+        shimRegistry.register(new Fabric_1_20_4_to_1_20_5());
+        shimRegistry.register(new Fabric_1_20_5_to_1_20_6());
+        shimRegistry.register(new Fabric_1_20_6_to_1_21());
         shimRegistry.register(new Fabric_1_21_to_1_21_1());
         shimRegistry.register(new Fabric_1_21_1_to_1_21_2());
         shimRegistry.register(new Fabric_1_21_2_to_1_21_3());
@@ -381,24 +401,37 @@ public class RetroModCli {
             System.err.println("Could not analyze mod.");
             System.exit(1);
         }
-        
+
+        String sourceMcVersion = info.targetMcVersion();
+        if (sourceMcVersion == null || sourceMcVersion.isEmpty()) {
+            System.err.println("Warning: Could not determine source MC version. Trying all shims...");
+            // Apply all shims as a best-effort transformation
+            RetroModTransformer transformer = RetroModTransformer.getInstance();
+            for (VersionShim shim : shimRegistry.getAllShims()) {
+                shim.registerRedirects(transformer);
+            }
+            transformJar(modPath, outputPath, transformer, info);
+            System.out.println("✓ Transformation complete (all shims applied): " + outputPath);
+            return;
+        }
+
         List<VersionShim> chain = shimRegistry.findShimChain(
             info.modLoaderType(),
-            info.targetMcVersion(),
+            sourceMcVersion,
             TARGET_MC_VERSION
         );
-        
+
         if (chain.isEmpty()) {
             System.out.println("No transformation needed or no shim available.");
             return;
         }
-        
+
         RetroModTransformer transformer = RetroModTransformer.getInstance();
         for (VersionShim shim : chain) {
             System.out.println("Applying: " + shim.getShimName());
             shim.registerRedirects(transformer);
         }
-        
+
         transformJar(modPath, outputPath, transformer, info);
         System.out.println("✓ Transformation complete: " + outputPath);
     }
@@ -666,33 +699,76 @@ public class RetroModCli {
     /**
      * Transform a JAR file using the configured transformer.
      */
-    private static void transformJar(Path input, Path output, 
+    private static void transformJar(Path input, Path output,
             RetroModTransformer transformer, ModVersionInfo info) throws Exception {
-        
+
         try (var inJar = new java.util.jar.JarFile(input.toFile());
              var outJar = new java.util.jar.JarOutputStream(
                      new FileOutputStream(output.toFile()))) {
-            
+
             var entries = inJar.entries();
             while (entries.hasMoreElements()) {
                 var entry = entries.nextElement();
                 outJar.putNextEntry(new java.util.jar.JarEntry(entry.getName()));
-                
+
                 if (!entry.isDirectory()) {
                     try (var is = inJar.getInputStream(entry)) {
                         byte[] data = is.readAllBytes();
-                        
-                        if (entry.getName().endsWith(".class") && 
+
+                        if (entry.getName().endsWith(".class") &&
                                 shouldTransformClass(entry.getName(), info)) {
                             data = transformer.transformClass(data, entry.getName());
+                        } else if (entry.getName().equals("fabric.mod.json")) {
+                            // Relax version dependencies for compatibility
+                            data = relaxFabricModDependencies(data);
+                        } else if (entry.getName().equals("quilt.mod.json")) {
+                            // Relax Quilt version dependencies too
+                            data = relaxFabricModDependencies(data);
                         }
-                        
+
                         outJar.write(data);
                     }
                 }
-                
+
                 outJar.closeEntry();
             }
+        }
+    }
+
+    /**
+     * Relax version constraints in fabric.mod.json so the mod can load on the target MC version.
+     */
+    private static byte[] relaxFabricModDependencies(byte[] jsonData) {
+        try {
+            String json = new String(jsonData, java.nio.charset.StandardCharsets.UTF_8);
+
+            // Parse and modify the JSON
+            // Simple but effective: replace minecraft version constraint with "*"
+            // and relax fabricloader to a minimum version
+
+            // Use a simple JSON approach since we don't have a JSON library
+            // Replace "minecraft" dependency value
+            json = json.replaceAll(
+                "(\"minecraft\"\\s*:\\s*)(?:\"[^\"]*\"|\\[[^\\]]*\\]|\\{[^}]*\\})",
+                "$1\"*\""
+            );
+
+            // Relax fabricloader constraint to be permissive
+            json = json.replaceAll(
+                "(\"fabricloader\"\\s*:\\s*)\"[^\"]*\"",
+                "$1\">=0.14.0\""
+            );
+
+            // Relax fabric-api submodule constraints
+            json = json.replaceAll(
+                "(\"fabric-[a-z-]+(?:-v[0-9]+)?\"\\s*:\\s*)\"(?:>=)?[0-9][^\"]*\"",
+                "$1\"*\""
+            );
+
+            return json.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            // If anything goes wrong, return the original data
+            return jsonData;
         }
     }
     

@@ -1,0 +1,55 @@
+# RetroMod Polyfill Providers - ServiceLoader configuration
+# Copyright (c) 2026 Bownlux
+#
+# Polyfills re-implement removed APIs as compatibility bridges.
+# Each provider can be toggled by category in config/retromod/config.json.
+
+# ============================================================
+# FABRIC POLYFILLS
+# ============================================================
+
+# Fabric Loader polyfills (TinyMapping reader API removed)
+com.retromod.polyfill.fabric.TinyMappingPolyfill
+
+# Fabric API polyfills (removed Fabric API modules/classes)
+com.retromod.polyfill.fabric.FabricApiPolyfill
+
+# ============================================================
+# MINECRAFT VANILLA POLYFILLS
+# ============================================================
+
+# Mixin target stubs (removed MC classes used as mixin targets)
+com.retromod.polyfill.minecraft.mixin.MixinTargetPolyfill
+
+# Vanilla MC API polyfills (Material, LiteralText, etc.)
+com.retromod.polyfill.minecraft.vanilla.MinecraftVanillaPolyfill
+
+# ============================================================
+# FORGE POLYFILLS
+# ============================================================
+
+# Forge core (SidedProxy, RegistryObject, LazyOptional, capabilities)
+com.retromod.polyfill.forge.ForgeCorePolyfill
+
+# ============================================================
+# NEOFORGE POLYFILLS
+# ============================================================
+
+# NeoForge core (Transfer API, RenderHighlightEvent, annotations)
+com.retromod.polyfill.neoforge.NeoForgeCorePolyfill
+
+# ============================================================
+# THIRD-PARTY MOD API POLYFILLS
+# ============================================================
+
+# Baubles API (1.7.10-1.12.2, replaced by Curios)
+com.retromod.polyfill.thirdparty.BaublesPolyfill
+
+# NEI - Not Enough Items (1.4.7-1.12.2, replaced by JEI)
+com.retromod.polyfill.thirdparty.NeiPolyfill
+
+# CoFH / Redstone Flux energy API (replaced by Forge Energy)
+com.retromod.polyfill.thirdparty.CofhEnergyPolyfill
+
+# WAILA - What Am I Looking At (replaced by Jade)
+com.retromod.polyfill.thirdparty.WailaPolyfill

@@ -5,6 +5,7 @@
 package com.retromod.core;
 
 import com.retromod.gui.RetroModGui;
+import com.retromod.gui.TitleScreenButtonInjector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -122,13 +123,24 @@ public class RetroModForge {
     
     /**
      * Initialize GUI components (client only).
+     * Registers both the in-game title screen button and the Swing-based
+     * first-run setup / floating "Add Mods" button as a fallback.
      */
     private void initializeClientGui() {
         Path gameDir = Paths.get(".").toAbsolutePath().normalize();
-        
+
+        // Register the in-game title screen button (Forge event bus)
+        try {
+            TitleScreenButtonInjector.register();
+            LOGGER.info("Title screen button registered");
+        } catch (Exception e) {
+            LOGGER.debug("Title screen button not available: {}", e.getMessage());
+        }
+
+        // Swing-based GUI as additional entry point
         try {
             RetroModGui gui = new RetroModGui(gameDir);
-            
+
             if (gui.isFirstRun()) {
                 // First time - show welcome and file picker
                 LOGGER.info("First run detected - showing setup dialog");
@@ -139,7 +151,7 @@ public class RetroModForge {
             }
         } catch (Exception e) {
             LOGGER.warn("Could not initialize GUI: {}", e.getMessage());
-            LOGGER.info("Use CLI instead: java -jar retromod-cli.jar aot <mod.jar>");
+            LOGGER.info("Use CLI instead: retromod aot <mod.jar>");
         }
     }
     

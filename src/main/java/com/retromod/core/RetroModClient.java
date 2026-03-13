@@ -11,6 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.retromod.gui.RetroModGui;
+import com.retromod.gui.TitleScreenButtonInjector;
+import com.retromod.util.McReflect;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -58,42 +60,48 @@ public class RetroModClient implements ClientModInitializer {
     /**
      * Initialize GUI components.
      *
-     * The old Swing-based GUI (floating "Add Mods" button + file picker outside
-     * Minecraft) has been replaced with a Minecraft-native screen accessible via
-     * a Mixin-injected button on the title screen.
+     * Registers a title screen button injector that adds a "RetroMod" button
+     * to the Minecraft title screen. The injector auto-detects the loader
+     * (Fabric/NeoForge/Forge) and uses the appropriate event system.
      *
-     * See: TitleScreenMixin, RetroModScreen
+     * On Fabric, this requires Fabric API to be installed for ScreenEvents.
+     * If Fabric API is not available, falls back to logging a message.
+     *
+     * See: TitleScreenButtonInjector, RetroModScreen
      */
     private void initializeGui(Path gameDir) {
-        LOGGER.info("RetroMod GUI available via title screen button (Mixin-injected)");
-        // No Swing GUI initialization needed — the TitleScreenMixin adds a button
-        // to the Minecraft title screen that opens RetroModScreen.
+        try {
+            TitleScreenButtonInjector.register();
+            LOGGER.info("RetroMod GUI available via title screen button");
+        } catch (Exception e) {
+            LOGGER.warn("Could not register title screen button: {}", e.getMessage());
+            LOGGER.info("Use the CLI instead: retromod <command>");
+        }
     }
     
     /**
      * Register crash handler with Minecraft client for world saving.
+     * Uses McReflect to resolve the correct class name across all loaders.
      */
     private void registerClientCrashHandler() {
         try {
             SafeCrashHandler crashHandler = SafeCrashHandler.getInstance();
-            
-            // Try to get Minecraft client instance
-            // This uses reflection to avoid compile-time dependency on mapped names
-            try {
-                Class<?> mcClass = Class.forName("net.minecraft.client.MinecraftClient");
-                Object mcInstance = mcClass.getMethod("getInstance").invoke(null);
-                crashHandler.registerClient(mcInstance);
-                LOGGER.debug("Registered crash handler with Minecraft client");
-            } catch (Exception e) {
-                // Try Forge naming
-                try {
-                    Class<?> mcClass = Class.forName("net.minecraft.client.Minecraft");
-                    Object mcInstance = mcClass.getMethod("getInstance").invoke(null);
+
+            // Resolve MC client class (handles yarn, mojang, and intermediary names)
+            Class<?> mcClass = McReflect.findClass(
+                "net.minecraft.client.MinecraftClient",  // yarn
+                "net.minecraft.client.Minecraft"         // mojang
+            );
+
+            if (mcClass != null) {
+                Method getInstance = McReflect.findMethod(mcClass, "getInstance");
+                if (getInstance != null) {
+                    Object mcInstance = getInstance.invoke(null);
                     crashHandler.registerClient(mcInstance);
-                    LOGGER.debug("Registered crash handler with Minecraft client (Forge)");
-                } catch (Exception e2) {
-                    LOGGER.debug("Could not register client with crash handler");
+                    LOGGER.debug("Registered crash handler with Minecraft client");
                 }
+            } else {
+                LOGGER.debug("Could not find Minecraft client class for crash handler");
             }
         } catch (Exception e) {
             LOGGER.debug("Crash handler not available: {}", e.getMessage());
@@ -155,14 +163,24 @@ public class RetroModClient implements ClientModInitializer {
             writeString.invoke(buf, "1.0.0-beta.1");
 
             // Create Identifier: Identifier.of("retromod", "presence")
-            Class<?> identifierClass = Class.forName("net.minecraft.util.Identifier");
+            // yarn: net.minecraft.util.Identifier, mojang: net.minecraft.resources.ResourceLocation
+            Class<?> identifierClass = McReflect.findClass(
+                "net.minecraft.util.Identifier",              // yarn
+                "net.minecraft.resources.ResourceLocation"    // mojang
+            );
+            if (identifierClass == null) {
+                LOGGER.debug("Could not find Identifier/ResourceLocation class");
+                return;
+            }
             Object identifier;
-            try {
-                // MC 1.21+ uses Identifier.of()
-                identifier = identifierClass.getMethod("of", String.class, String.class)
-                    .invoke(null, "retromod", "presence");
-            } catch (NoSuchMethodException e) {
-                // Older versions use new Identifier()
+            // MC 1.21+ uses Identifier.of() / ResourceLocation.fromNamespaceAndPath()
+            Method idFactory = McReflect.findMethod(identifierClass,
+                new Class[]{String.class, String.class},
+                "of", "fromNamespaceAndPath");
+            if (idFactory != null) {
+                identifier = idFactory.invoke(null, "retromod", "presence");
+            } else {
+                // Older versions use constructor
                 identifier = identifierClass.getConstructor(String.class, String.class)
                     .newInstance("retromod", "presence");
             }

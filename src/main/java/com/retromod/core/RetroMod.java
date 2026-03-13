@@ -98,6 +98,7 @@ public class RetroMod implements ModInitializer {
     private boolean useAotCompilation = true;
     private boolean transformMixins = true;
     private boolean passNativeModsThrough = true; // Don't transform mods already for current version
+    private boolean polyfillsEnabled = true;      // Enable re-implemented removed APIs
     
     // Supported target versions (add new MC versions here)
     public static final String[] SUPPORTED_TARGET_VERSIONS = {
@@ -180,6 +181,13 @@ public class RetroMod implements ModInitializer {
             registerShims();
         } catch (Exception e) {
             LOGGER.warn("Could not register shims", e);
+        }
+
+        // Register polyfills (re-implemented removed APIs)
+        try {
+            registerPolyfills();
+        } catch (Exception e) {
+            LOGGER.warn("Could not register polyfills", e);
         }
 
         // Initialize AOT compiler
@@ -339,6 +347,7 @@ public class RetroMod implements ModInitializer {
 
                 if (config.has("use_aot")) useAotCompilation = config.get("use_aot").getAsBoolean();
                 if (config.has("transform_mixins")) transformMixins = config.get("transform_mixins").getAsBoolean();
+                if (config.has("polyfills_enabled")) polyfillsEnabled = config.get("polyfills_enabled").getAsBoolean();
 
                 LOGGER.info("Loaded config from {}", configPath);
             } catch (Exception e) {
@@ -375,7 +384,9 @@ public class RetroMod implements ModInitializer {
                   "debug": false,
                   "dump_bytecode": false,
 
-                  "force_translate_complex": false
+                  "force_translate_complex": false,
+
+                  "polyfills_enabled": true
                 }
                 """;
         try {
@@ -573,7 +584,19 @@ public class RetroMod implements ModInitializer {
 
         LOGGER.info("Registered built-in shims for 1.21.x compatibility");
     }
-    
+
+    /**
+     * Register polyfills (re-implemented removed APIs).
+     * Polyfills provide stub classes for APIs that were completely removed,
+     * preventing ClassNotFoundException and mixin hierarchy failures.
+     */
+    private void registerPolyfills() {
+        com.retromod.polyfill.PolyfillRegistry polyfillRegistry =
+            new com.retromod.polyfill.PolyfillRegistry();
+        polyfillRegistry.setEnabled(polyfillsEnabled);
+        polyfillRegistry.loadAndRegister(RetroModTransformer.getInstance());
+    }
+
     /**
      * Scan mods folder and prepare any legacy mods.
      */

@@ -4,6 +4,7 @@
  */
 package com.retromod.core;
 
+import com.retromod.mixin.MixinCompatibilityTransformer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -791,13 +792,47 @@ public class FabricModTransformer {
                     
                     JarEntry entry = new JarEntry(entryName);
                     jos.putNextEntry(entry);
-                    Files.copy(file, jos);
+
+                    // Process mixin config JSON files to strip broken entries
+                    if (entryName.endsWith(".mixins.json") || entryName.endsWith("mixin.json")) {
+                        try {
+                            String json = Files.readString(file);
+                            // Build a class data lookup from the source directory
+                            Map<String, byte[]> classLookup = buildClassLookup(sourceDir);
+                            MixinCompatibilityTransformer mixinTransformer =
+                                new MixinCompatibilityTransformer(RetroModTransformer.getInstance());
+                            String transformed = mixinTransformer.transformMixinConfig(json, classLookup);
+                            jos.write(transformed.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        } catch (Exception e) {
+                            LOGGER.warn("Failed to process mixin config {}: {}", entryName, e.getMessage());
+                            Files.copy(file, jos);
+                        }
+                    } else {
+                        Files.copy(file, jos);
+                    }
+
                     jos.closeEntry();
                 }
             }
         }
     }
     
+    /**
+     * Build a map of class name -> class bytes for mixin analysis.
+     */
+    private Map<String, byte[]> buildClassLookup(Path sourceDir) {
+        Map<String, byte[]> lookup = new HashMap<>();
+        try (var stream = Files.walk(sourceDir)) {
+            for (Path file : stream.filter(f -> f.toString().endsWith(".class")).toList()) {
+                String name = sourceDir.relativize(file).toString().replace(File.separator, "/");
+                lookup.put(name, Files.readAllBytes(file));
+            }
+        } catch (IOException e) {
+            LOGGER.warn("Failed to build class lookup: {}", e.getMessage());
+        }
+        return lookup;
+    }
+
     /**
      * Delete directory recursively.
      */

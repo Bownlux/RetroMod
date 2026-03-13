@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.ServiceLoader;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 import java.util.regex.*;
@@ -82,7 +83,10 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
             String targetVersion = getMinecraftVersion();
             
             LOGGER.info("Target Minecraft version: {}", targetVersion);
-            
+
+            // Step 0: Register shims BEFORE transforming so redirects are available
+            registerShimsForTransform();
+
             // Step 1: Create all folders and guide files
             createFoldersAndGuides(gameDir);
             
@@ -120,6 +124,52 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
         }
     }
     
+    /**
+     * Register all version shims and polyfills so that the bytecode transformer
+     * has redirects available BEFORE AOT transformation runs.
+     * Without this, mods are transformed with an empty redirect map.
+     */
+    private void registerShimsForTransform() {
+        try {
+            RetroModTransformer transformer = RetroModTransformer.getInstance();
+
+            // Load version shims via ServiceLoader
+            ServiceLoader<VersionShim> shims = ServiceLoader.load(VersionShim.class);
+            int shimCount = 0;
+            for (VersionShim shim : shims) {
+                try {
+                    shim.registerRedirects(transformer);
+                    shimCount++;
+                } catch (Exception e) {
+                    LOGGER.debug("Could not register shim: {}", e.getMessage());
+                }
+            }
+            LOGGER.info("Registered {} version shims for transformation", shimCount);
+
+            // Load polyfill providers via ServiceLoader
+            try {
+                ServiceLoader<com.retromod.polyfill.PolyfillProvider> polyfills =
+                    ServiceLoader.load(com.retromod.polyfill.PolyfillProvider.class);
+                int polyfillCount = 0;
+                for (com.retromod.polyfill.PolyfillProvider provider : polyfills) {
+                    try {
+                        provider.registerPolyfills(transformer);
+                        polyfillCount++;
+                    } catch (Exception e) {
+                        LOGGER.debug("Could not register polyfill: {}", e.getMessage());
+                    }
+                }
+                if (polyfillCount > 0) {
+                    LOGGER.info("Registered {} polyfill providers for transformation", polyfillCount);
+                }
+            } catch (Exception e) {
+                LOGGER.debug("No polyfill providers found");
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Could not register shims for pre-launch transform: {}", e.getMessage());
+        }
+    }
+
     /**
      * Get the actual Minecraft version.
      */

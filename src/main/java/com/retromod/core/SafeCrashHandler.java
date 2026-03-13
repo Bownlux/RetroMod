@@ -7,8 +7,7 @@ package com.retromod.core;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.swing.*;
-import java.awt.*;
+import com.retromod.gui.InGameScreenFactory;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -481,34 +480,26 @@ public class SafeCrashHandler {
     }
     
     /**
-     * Show GUI crash dialog (client only).
+     * Show crash dialog in-game (client only).
+     * Uses InGameScreenFactory to render as a Minecraft screen instead of a Swing popup.
      */
     private void showGuiCrashDialog(String message) {
-        SwingUtilities.invokeLater(() -> {
-            try {
-                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            } catch (Exception ignored) {}
-            
-            // Show dialog with only a quit button (no continue option)
-            JOptionPane.showOptionDialog(
-                null,
-                message,
-                "RetroMod - Mod Compatibility Error",
-                JOptionPane.DEFAULT_OPTION,
-                JOptionPane.ERROR_MESSAGE,
-                null,
-                new String[]{"Quit Minecraft"},
-                "Quit Minecraft"
-            );
-            
-            // Force quit
-            LOGGER.info("User acknowledged crash - exiting Minecraft");
-            System.exit(1);
-        });
-        
-        // Block this thread while dialog is showing
         try {
-            Thread.sleep(Long.MAX_VALUE);
+            // Try in-game screen first
+            InGameScreenFactory.showCrashScreen("Transformed Mod", message, () -> {
+                LOGGER.info("User acknowledged crash - exiting Minecraft");
+                System.exit(1);
+            });
+        } catch (Exception e) {
+            // Fallback: just log and exit if in-game screen fails
+            LOGGER.error("Could not show in-game crash screen: {}", e.getMessage());
+            LOGGER.error("Crash details:\n{}", message);
+            System.exit(1);
+        }
+
+        // Block this thread briefly while screen is showing
+        try {
+            Thread.sleep(30000); // 30 seconds max — user should click Save & Quit
         } catch (InterruptedException ignored) {
             System.exit(1);
         }

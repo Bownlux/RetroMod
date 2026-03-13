@@ -9,48 +9,56 @@
  */
 package com.retromod.shim.fabric.embedded;
 
+import com.retromod.util.McReflect;
+
 import java.lang.reflect.Method;
 
 /**
- * Shim for net.minecraft.util.Identifier
- * 
+ * Shim for net.minecraft.util.Identifier (yarn) / net.minecraft.resources.ResourceLocation (mojang).
+ *
  * Old usage: new Identifier("namespace", "path")
  * New usage: Identifier.of("namespace", "path")
- * 
+ *
  * This shim bridges the gap by providing static methods that
- * delegate to the new API.
+ * delegate to the new API. Uses McReflect for cross-loader/namespace resolution.
  */
 public final class IdentifierShim {
-    
+
     private static Method ofMethod;
     private static Method parseMethod;
     private static Class<?> identifierClass;
-    
+
     static {
         try {
-            // Try to find the Identifier class (Fabric uses this name)
-            try {
-                identifierClass = Class.forName("net.minecraft.util.Identifier");
-            } catch (ClassNotFoundException e) {
-                // NeoForge/Forge might still use ResourceLocation
-                identifierClass = Class.forName("net.minecraft.resources.ResourceLocation");
+            // Use McReflect to find the Identifier class across all loaders/namespaces
+            // yarn: net.minecraft.util.Identifier
+            // mojang: net.minecraft.resources.ResourceLocation
+            // intermediary: resolved via MappingResolver
+            identifierClass = McReflect.findClass(
+                "net.minecraft.util.Identifier",           // yarn
+                "net.minecraft.resources.ResourceLocation" // mojang
+            );
+
+            if (identifierClass == null) {
+                throw new ClassNotFoundException(
+                    "Could not find Identifier/ResourceLocation class on any namespace");
             }
-            
+
             // Find the 'of' method (2 argument version)
-            try {
-                ofMethod = identifierClass.getMethod("of", String.class, String.class);
-            } catch (NoSuchMethodException e) {
-                // Try 'fromNamespaceAndPath' (NeoForge naming)
-                ofMethod = identifierClass.getMethod("fromNamespaceAndPath", String.class, String.class);
+            ofMethod = McReflect.findMethod(identifierClass,
+                new Class[]{String.class, String.class},
+                "of", "fromNamespaceAndPath");
+
+            if (ofMethod == null) {
+                throw new NoSuchMethodException(
+                    "Could not find Identifier.of or ResourceLocation.fromNamespaceAndPath");
             }
-            
+
             // Find the parse method (1 argument version)
-            try {
-                parseMethod = identifierClass.getMethod("of", String.class);
-            } catch (NoSuchMethodException e) {
-                parseMethod = identifierClass.getMethod("parse", String.class);
-            }
-            
+            parseMethod = McReflect.findMethod(identifierClass,
+                new Class[]{String.class},
+                "of", "parse");
+
         } catch (Exception e) {
             throw new RuntimeException("RetroMod: Failed to initialize IdentifierShim", e);
         }

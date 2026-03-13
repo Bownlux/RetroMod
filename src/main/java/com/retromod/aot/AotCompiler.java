@@ -6,6 +6,7 @@ package com.retromod.aot;
 
 import com.retromod.core.*;
 import com.retromod.embedder.*;
+import com.retromod.mixin.MixinCompatibilityTransformer;
 import com.retromod.shim.ShimRegistry;
 import org.objectweb.asm.*;
 import org.slf4j.Logger;
@@ -330,11 +331,29 @@ public class AotCompiler {
                 jos.closeEntry();
             }
             
-            // Write original resources
+            // Write original resources, processing mixin configs to strip broken entries
+            MixinCompatibilityTransformer mixinTransformer = new MixinCompatibilityTransformer(transformer);
             for (Map.Entry<String, byte[]> entry : originalResources.entrySet()) {
                 if (entry.getKey().equals("META-INF/MANIFEST.MF")) continue;  // Already wrote
+
+                byte[] data = entry.getValue();
+
+                // Process mixin config JSON files to strip broken mixin entries
+                if (entry.getKey().endsWith(".mixins.json") || entry.getKey().endsWith("mixin.json")) {
+                    try {
+                        String json = new String(data, java.nio.charset.StandardCharsets.UTF_8);
+                        String transformed = mixinTransformer.transformMixinConfig(json, transformedClasses);
+                        if (!transformed.equals(json)) {
+                            LOGGER.info("Processed mixin config: {} (stripped broken entries)", entry.getKey());
+                            data = transformed.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        }
+                    } catch (Exception e) {
+                        LOGGER.warn("Failed to process mixin config {}: {}", entry.getKey(), e.getMessage());
+                    }
+                }
+
                 jos.putNextEntry(new JarEntry(entry.getKey()));
-                jos.write(entry.getValue());
+                jos.write(data);
                 jos.closeEntry();
             }
             

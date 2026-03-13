@@ -116,14 +116,20 @@ public class Fabric_1_21_8_to_1_21_9 implements VersionShim {
         
         // ============================================================
         // KEY MAPPING CHANGES
-        // KeyBinding.Category is now a record
+        // String category -> KeyBinding.Category record
         // ============================================================
-        
-        // Old: KeyBinding with String category
-        // New: KeyBinding.Category record
-        
-        // The old constructor still works, this is more of a recommendation
-        // than a breaking change, but we provide migration helpers
+
+        // Old: new KeyBinding(name, type, key, categoryString)
+        // New: new KeyBinding(name, type, key, categoryRecord)
+
+        // The old String-based constructor was REMOVED in 1.21.9.
+        // Must redirect to KeyBindingShim which creates a Category record.
+        transformer.registerMethodRedirect(
+            "net/minecraft/client/option/KeyBinding", "<init>",
+            "(Ljava/lang/String;Lnet/minecraft/client/util/InputUtil$Type;ILjava/lang/String;)V",
+            "com/retromod/shim/fabric/embedded/KeyBindingShim", "create",
+            "(Ljava/lang/String;Ljava/lang/Object;ILjava/lang/String;)Lnet/minecraft/client/option/KeyBinding;"
+        );
         
         // ============================================================
         // BLOCK ENTITY RENDERING
@@ -139,7 +145,8 @@ public class Fabric_1_21_8_to_1_21_9 implements VersionShim {
         return new String[] {
             "com.retromod.shim.fabric.embedded.ResourceManagerHelperShim",
             "com.retromod.shim.fabric.embedded.WorldRenderEventsShim",
-            "com.retromod.shim.fabric.embedded.EntityWorldShim"
+            "com.retromod.shim.fabric.embedded.EntityWorldShim",
+            "com.retromod.shim.fabric.embedded.KeyBindingShim"
         };
     }
 }

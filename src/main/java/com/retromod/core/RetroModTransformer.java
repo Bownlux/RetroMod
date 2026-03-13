@@ -47,7 +47,11 @@ public class RetroModTransformer implements ClassFileTransformer {
     
     // Maps: oldFieldOwner/oldFieldName -> newFieldOwner/newFieldName
     private final Map<FieldKey, FieldTarget> fieldRedirects = new ConcurrentHashMap<>(64);
-    
+
+    // Maps: oldSuperclass -> new superclass + interfaces to add
+    // Used for class-to-interface migrations (e.g., Explosion became an interface)
+    private final Map<String, SuperclassRedirect> superclassRedirects = new ConcurrentHashMap<>(16);
+
     // Packages that should be transformed (mod packages, not minecraft itself)
     private final Set<String> transformablePackages = ConcurrentHashMap.newKeySet();
     
@@ -144,6 +148,21 @@ public class RetroModTransformer implements ClassFileTransformer {
     public void registerEmbeddedShim(String className) {
         embeddedShimClasses.add(className);
     }
+
+    /**
+     * Register a superclass redirect for class-to-interface migrations.
+     * When a mod extends oldSuperclass, it will be rewritten to extend newSuperclass
+     * and implement the specified interfaces.
+     *
+     * Example: If Explosion (class_1927) changed from a class to an interface,
+     * mods extending it need their superclass changed to a bridge class that
+     * implements the new interface.
+     */
+    public void registerSuperclassRedirect(String oldSuperclass, String newSuperclass, String... addInterfaces) {
+        superclassRedirects.put(oldSuperclass, new SuperclassRedirect(newSuperclass, addInterfaces));
+        LOGGER.debug("Registered superclass redirect: {} -> {} (+ {} interfaces)",
+                oldSuperclass, newSuperclass, addInterfaces.length);
+    }
     
     @Override
     public byte[] transform(ClassLoader loader, String className, 
@@ -200,7 +219,8 @@ public class RetroModTransformer implements ClassFileTransformer {
      */
     public byte[] transformClass(byte[] originalBytes, String className) {
         // OPTIMIZATION: Skip if no redirects registered
-        if (methodRedirects.isEmpty() && classRedirects.isEmpty() && fieldRedirects.isEmpty()) {
+        if (methodRedirects.isEmpty() && classRedirects.isEmpty() &&
+                fieldRedirects.isEmpty() && superclassRedirects.isEmpty()) {
             return originalBytes;
         }
 
@@ -278,18 +298,49 @@ public class RetroModTransformer implements ClassFileTransformer {
     }
     
     /**
-     * ASM ClassVisitor that rewrites method calls and field accesses.
+     * ASM ClassVisitor that rewrites method calls, field accesses,
+     * and superclass references (for class-to-interface migrations).
      */
     private class RetroModClassVisitor extends ClassVisitor {
-        
+
         public RetroModClassVisitor(int api, ClassVisitor classVisitor) {
             super(api, classVisitor);
         }
-        
+
+        @Override
+        public void visit(int version, int access, String name, String signature,
+                String superName, String[] interfaces) {
+            // Check if superclass needs to be rewritten (class-to-interface polyfill)
+            if (superName != null && !superclassRedirects.isEmpty()) {
+                SuperclassRedirect redirect = superclassRedirects.get(superName);
+                if (redirect != null) {
+                    LOGGER.debug("Rewriting superclass of {} from {} to {}",
+                            name, superName, redirect.newSuperclass());
+                    String newSuper = redirect.newSuperclass();
+                    String[] newInterfaces = mergeInterfaces(interfaces, redirect.addInterfaces());
+                    super.visit(version, access, name, signature, newSuper, newInterfaces);
+                    return;
+                }
+            }
+            super.visit(version, access, name, signature, superName, interfaces);
+        }
+
+        private String[] mergeInterfaces(String[] existing, String[] additional) {
+            if (additional == null || additional.length == 0) {
+                return existing;
+            }
+            Set<String> merged = new LinkedHashSet<>();
+            if (existing != null) {
+                Collections.addAll(merged, existing);
+            }
+            Collections.addAll(merged, additional);
+            return merged.toArray(new String[0]);
+        }
+
         @Override
         public MethodVisitor visitMethod(int access, String name, String descriptor,
                 String signature, String[] exceptions) {
-            
+
             MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
             // OPTIMIZATION: Only wrap if we have redirects
             if (methodRedirects.isEmpty() && fieldRedirects.isEmpty()) {
@@ -370,6 +421,7 @@ public class RetroModTransformer implements ClassFileTransformer {
     public record MethodTarget(String owner, String name, String desc) {}
     public record FieldKey(String owner, String name) {}
     public record FieldTarget(String owner, String name, String oldDesc, String newDesc) {}
+    public record SuperclassRedirect(String newSuperclass, String[] addInterfaces) {}
     
     public int getMethodRedirectCount() {
         return methodRedirects.size();
@@ -389,5 +441,9 @@ public class RetroModTransformer implements ClassFileTransformer {
     
     public Map<String, String> getClassRedirects() {
         return Collections.unmodifiableMap(classRedirects);
+    }
+
+    public Map<FieldKey, FieldTarget> getFieldRedirects() {
+        return Collections.unmodifiableMap(fieldRedirects);
     }
 }

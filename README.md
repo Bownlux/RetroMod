@@ -52,6 +52,7 @@ RetroMod is a drop-in Minecraft mod that transforms older mod bytecode at load t
 - **Hybrid AOT/JIT** — Pre-transforms mods at first launch, JIT fallback for edge cases
 - **Instruction-Level Granularity** — Only specific bytecode instructions get transformed
 - **API Embedding** — Removed APIs are bundled as shim classes directly into mod JARs
+- **Polyfill System** — 72+ stub implementations for completely removed APIs across Fabric, Forge, NeoForge, vanilla MC, and third-party mods (Baubles, NEI, CoFH, WAILA)
 - **Mixin Compatibility** — Transforms `@Inject`, `@Redirect`, `@Shadow`, `@Accessor` targets
 - **Reflection Remapping** — Intercepts `Class.forName()` and `Method.invoke()` calls
 - **API Version Relaxation** — Automatically updates version constraints so mods requiring old API versions (e.g., Cloth Config 6.x) work with newer ones
@@ -256,6 +257,57 @@ For most users, **gameplay performance is identical to running native mods.** Th
 
 ---
 
+## Polyfill System (New)
+
+RetroMod's shims handle API **renames and relocations** — when a method or class was moved or renamed between versions. But sometimes APIs are **completely removed** with no direct replacement. When that happens, mods crash with `ClassNotFoundException`, `NoSuchMethodError`, or mixin hierarchy failures.
+
+The **polyfill system** solves this by re-implementing removed APIs as lightweight compatibility stubs. These stubs provide just enough of the original API surface so that mods referencing removed classes don't crash. Polyfills are loaded automatically via ServiceLoader and can be toggled per-category in config.
+
+### What's Covered
+
+RetroMod ships with **72+ polyfill stubs** across 10 providers covering every major modding ecosystem:
+
+| Category | Examples | Fixes |
+|----------|----------|-------|
+| **Fabric Loader** | `TinyVisitor`, `TinyV2Visitor`, `TinyMappingFactory`, `TinyMetadata` | Not Enough Crashes crash (`ClassNotFoundException`) |
+| **Fabric API** | Removed Fabric API modules and classes | Mods using deprecated Fabric API surfaces |
+| **Minecraft Vanilla** | `Material`, `LiteralText`, removed screen classes (`class_5500`) | No Chat Reports mixin failure, mods using removed vanilla APIs |
+| **Mixin Targets** | Removed MC classes used as mixin targets | Mixin hierarchy crashes when target classes are deleted |
+| **Forge** | `SidedProxy`, `RegistryObject`, `MinecraftForge`, `ICapabilityProvider`, `LazyOptional` | Legacy Forge mods referencing the old capability/registry system |
+| **NeoForge** | `ItemStackHandler`, `ComponentItemHandler`, `RenderHighlightEvent`, `javax.annotation.*` | NeoForge mods using removed transfer API and annotation classes |
+| **Baubles** | `IBauble`, `BaubleType`, `BaublesApi`, capability classes | 1.7.10–1.12.2 mods using Baubles (replaced by Curios) |
+| **NEI** | `API`, `IRecipeHandler`, `TemplateRecipeHandler`, `ItemList` | 1.4.7–1.12.2 mods using Not Enough Items (replaced by JEI) |
+| **CoFH / Redstone Flux** | `IEnergyConnection`, `IEnergyHandler`, `IEnergyReceiver`, `IEnergyProvider` | Mods using the old Thermal/RF energy API (replaced by Forge Energy) |
+| **WAILA** | `IWailaPlugin`, `IWailaRegistrar`, `IWailaDataProvider` | Mods using What Am I Looking At (replaced by Jade) |
+
+### Superclass Redirects
+
+When Minecraft changes a **class to an interface** (e.g., `Explosion` became an interface in newer versions), mods that `extend Explosion` break because you can't extend an interface. RetroMod's polyfill system includes a **superclass redirect** mechanism that rewrites the class hierarchy at load time — changing the superclass to a bridge class and adding the new interface, so the mod loads correctly.
+
+### Configuration
+
+Polyfills are **enabled by default**. You can toggle the entire system or individual categories in `config/retromod/config.json`:
+
+```json
+{
+  "polyfills_enabled": true,
+  "polyfill_categories": {
+    "fabric_api": true,
+    "rendering": true,
+    "entity": true,
+    "mixin_targets": true,
+    "minecraft_vanilla": true,
+    "forge": true,
+    "neoforge": true,
+    "thirdparty": true
+  }
+}
+```
+
+> **Note:** Polyfill stubs are lightweight no-op implementations. They prevent crashes and let mods load, but the polyfilled functionality itself won't do anything meaningful — the point is that the mod doesn't crash and its other features still work.
+
+---
+
 ## Configuration
 
 Auto-generated on first launch at `config/retromod/config.json`:
@@ -268,6 +320,7 @@ Auto-generated on first launch at `config/retromod/config.json`:
   "transform_mixins": true,
   "transform_refmaps": true,
   "remap_reflection": true,
+  "polyfills_enabled": true,
   "log_level": "INFO",
   "log_transformations": false,
   "target_mc_version": "auto",
@@ -283,6 +336,7 @@ Auto-generated on first launch at `config/retromod/config.json`:
 | `use_hybrid` | `true` | Use hybrid AOT/JIT mode (JIT fills in what AOT misses) |
 | `transform_mixins` | `true` | Rewrite Mixin annotation targets for version compatibility |
 | `remap_reflection` | `true` | Intercept reflection calls (Class.forName, Method.invoke) and remap class names |
+| `polyfills_enabled` | `true` | Enable the polyfill system — re-implements removed APIs as compatibility stubs so old mods don't crash |
 | `force_translate_complex` | `false` | Force-translate mods that RetroMod deems "unlikely to work" (high complexity score). Enable this if a mod was skipped and you want to try it anyway. |
 | `log_level` | `"INFO"` | Logging verbosity: `ERROR`, `WARN`, `INFO`, `DEBUG` |
 | `dump_bytecode` | `false` | Dump transformed bytecode to disk for debugging |
@@ -300,7 +354,11 @@ SHIM CHAIN — find path: e.g. 1.21 → 1.21.1 → ... → 1.21.11
   ↓
 BYTECODE TRANSFORMATION — AOT, partial AOT, or JIT
   ↓
-OUTPUT — rewritten bytecode, embedded API shims, updated Mixins
+POLYFILL INJECTION — stub removed APIs (Fabric, Forge, NeoForge, vanilla, third-party)
+  ↓
+SUPERCLASS REDIRECTS — rewrite class hierarchy for class→interface migrations
+  ↓
+OUTPUT — rewritten bytecode, embedded API shims, polyfill stubs, updated Mixins
 ```
 
 ### Core Components
@@ -312,6 +370,7 @@ OUTPUT — rewritten bytecode, embedded API shims, updated Mixins
 | `ShimRegistry` | BFS-based shim chain finder |
 | `MixinCompatibilityTransformer` | Transforms Mixin annotation targets |
 | `ModVersionDetector` | Reads mod metadata from loader-specific files |
+| `PolyfillRegistry` | ServiceLoader-based registry for removed API polyfills |
 | `RenderingBackendShim` | Future-proof rendering compat (OpenGL/Vulkan/Metal) |
 
 ---
@@ -386,7 +445,9 @@ public class Fabric_X_to_Y implements VersionShim {
 
 ## Contributing
 
-Fork → add shim in `src/main/java/com/retromod/shim/` → register in `META-INF/services/com.retromod.core.VersionShim` → add tests → PR.
+**Adding a shim:** Fork → add shim in `src/main/java/com/retromod/shim/` → register in `META-INF/services/com.retromod.core.VersionShim` → add tests → PR.
+
+**Adding a polyfill:** Fork → create a `PolyfillProvider` in `src/main/java/com/retromod/polyfill/` → add stub classes at the original package path → register in `META-INF/services/com.retromod.polyfill.PolyfillProvider` → PR.
 
 ## License
 

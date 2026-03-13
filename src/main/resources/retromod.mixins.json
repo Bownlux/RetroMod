@@ -1,12 +1,10 @@
 {
-  "required": true,
+  "required": false,
   "minVersion": "0.8",
-  "package": "com.retromod.mixin.client",
+  "package": "com.retromod.mixin",
   "compatibilityLevel": "JAVA_21",
-  "client": [
-    "TitleScreenMixin"
-  ],
+  "client": [],
   "injectors": {
-    "defaultRequire": 1
+    "defaultRequire": 0
   }
 }
