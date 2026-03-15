@@ -58,13 +58,6 @@ public interface TinyVisitor {
         default int getMinorVersion() { return 0; }
         default java.util.List<String> getNamespaces() { return java.util.List.of(); }
         default java.util.Map<String, String> getProperties() { return java.util.Map.of(); }
-        default int index(String namespace) {
-            java.util.List<String> ns = getNamespaces();
-            for (int i = 0; i < ns.size(); i++) {
-                if (ns.get(i).equals(namespace)) return i;
-            }
-            return -1;
-        }
     }
 
     /**

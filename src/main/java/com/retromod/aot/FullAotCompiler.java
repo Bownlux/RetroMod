@@ -10,6 +10,8 @@ import com.retromod.shim.ShimRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.*;
+import java.awt.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
@@ -44,8 +46,6 @@ public class FullAotCompiler {
     
     // Cache directory for pre-compiled classes
     private static final String CACHE_DIR = "retromod-cache/full-aot";
-    private static final java.util.regex.Pattern PAT_FABRIC_ID = java.util.regex.Pattern.compile("\"id\"\\s*:\\s*\"([^\"]+)\"");
-    private static final java.util.regex.Pattern PAT_MOD_ID_TOML = java.util.regex.Pattern.compile("modId\\s*=\\s*\"([^\"]+)\"");
     
     // Singleton
     private static FullAotCompiler instance;
@@ -340,7 +340,8 @@ public class FullAotCompiler {
             ZipEntry fabricEntry = jar.getEntry("fabric.mod.json");
             if (fabricEntry != null) {
                 String content = new String(jar.getInputStream(fabricEntry).readAllBytes());
-                java.util.regex.Matcher matcher = PAT_FABRIC_ID.matcher(content);
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\"id\"\\s*:\\s*\"([^\"]+)\"");
+                java.util.regex.Matcher matcher = pattern.matcher(content);
                 if (matcher.find()) {
                     return matcher.group(1);
                 }
@@ -350,7 +351,8 @@ public class FullAotCompiler {
             ZipEntry forgeEntry = jar.getEntry("META-INF/mods.toml");
             if (forgeEntry != null) {
                 String content = new String(jar.getInputStream(forgeEntry).readAllBytes());
-                java.util.regex.Matcher matcher = PAT_MOD_ID_TOML.matcher(content);
+                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("modId\\s*=\\s*\"([^\"]+)\"");
+                java.util.regex.Matcher matcher = pattern.matcher(content);
                 if (matcher.find()) {
                     return matcher.group(1);
                 }
@@ -398,40 +400,128 @@ public class FullAotCompiler {
     }
     
     /**
-     * Show progress (logs + in-game notification on completion).
+     * Show GUI progress dialog.
      */
     public void showProgressDialog(List<Path> modsToCompile) {
-        // Add progress listener that logs + queues in-game notification
-        ProgressListener listener = new ProgressListener() {
-            @Override
-            public void onProgress(int compiled, int total, String mod, String className) {
-                if (compiled % 50 == 0 || compiled == total) {
-                    int percent = total > 0 ? (int) ((compiled * 100.0) / total) : 0;
-                    LOGGER.info("AOT Compilation: {}% ({}/{}) - {}", percent, compiled, total, mod);
+        if (!EnvironmentDetector.canShowGui()) {
+            // Just run without GUI on servers
+            runFullCompilation(modsToCompile);
+            return;
+        }
+        
+        SwingUtilities.invokeLater(() -> {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+            
+            JDialog dialog = new JDialog((Frame) null, "RetroMod - Full AOT Compilation", true);
+            dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+            
+            JPanel panel = new JPanel(new BorderLayout(10, 10));
+            panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+            
+            // Title
+            JLabel titleLabel = new JLabel("Pre-compiling mods for maximum performance...");
+            titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 14f));
+            panel.add(titleLabel, BorderLayout.NORTH);
+            
+            // Progress area
+            JPanel progressPanel = new JPanel(new GridLayout(4, 1, 5, 5));
+            
+            JProgressBar progressBar = new JProgressBar(0, 100);
+            progressBar.setStringPainted(true);
+            progressPanel.add(progressBar);
+            
+            JLabel modLabel = new JLabel("Preparing...");
+            progressPanel.add(modLabel);
+            
+            JLabel classLabel = new JLabel(" ");
+            classLabel.setFont(classLabel.getFont().deriveFont(Font.PLAIN, 11f));
+            progressPanel.add(classLabel);
+            
+            JLabel statsLabel = new JLabel("0 / 0 classes compiled");
+            progressPanel.add(statsLabel);
+            
+            panel.add(progressPanel, BorderLayout.CENTER);
+            
+            // Cancel button
+            JButton cancelButton = new JButton("Cancel");
+            cancelButton.addActionListener(e -> {
+                cancel();
+                dialog.dispose();
+            });
+            
+            JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            buttonPanel.add(cancelButton);
+            panel.add(buttonPanel, BorderLayout.SOUTH);
+            
+            dialog.add(panel);
+            dialog.pack();
+            dialog.setSize(450, 200);
+            dialog.setLocationRelativeTo(null);
+            
+            // Add progress listener
+            ProgressListener listener = new ProgressListener() {
+                @Override
+                public void onProgress(int compiled, int total, String mod, String className) {
+                    SwingUtilities.invokeLater(() -> {
+                        int percent = total > 0 ? (int) ((compiled * 100.0) / total) : 0;
+                        progressBar.setValue(percent);
+                        progressBar.setString(percent + "%");
+                        modLabel.setText("Mod: " + mod);
+                        classLabel.setText("Class: " + truncate(className, 50));
+                        statsLabel.setText(compiled + " / " + total + " classes compiled");
+                    });
                 }
-            }
-
-            @Override
-            public void onComplete(int totalCompiled, long timeMs) {
-                LOGGER.info("AOT Compilation complete: {} classes in {:.1f}s", totalCompiled, timeMs / 1000.0);
-                com.retromod.gui.InGameNotificationManager.queue(
-                    "AOT Compilation Complete",
-                    String.format("Classes compiled: %d\nTime: %.1f seconds\n\n" +
-                        "Future game launches will be MUCH faster!", totalCompiled, timeMs / 1000.0)
-                );
-            }
-
-            @Override
-            public void onError(String mod, String className, String error) {
-                LOGGER.debug("Error compiling {}: {}", className, error);
-            }
-        };
-
-        addProgressListener(listener);
-
-        // Start compilation in background
-        runFullCompilation(modsToCompile).thenRun(() -> {
-            removeProgressListener(listener);
+                
+                @Override
+                public void onComplete(int totalCompiled, long timeMs) {
+                    SwingUtilities.invokeLater(() -> {
+                        dialog.dispose();
+                        
+                        JOptionPane.showMessageDialog(
+                            null,
+                            String.format("""
+                                Full AOT Compilation Complete!
+                                
+                                ═══════════════════════════════════════
+                                
+                                Classes compiled: %d
+                                Time: %.1f seconds
+                                
+                                ═══════════════════════════════════════
+                                
+                                Future game launches will be MUCH faster!
+                                The compiled bytecode is cached and will
+                                be reused automatically.
+                                """, totalCompiled, timeMs / 1000.0),
+                            "Compilation Complete!",
+                            JOptionPane.INFORMATION_MESSAGE
+                        );
+                    });
+                }
+                
+                @Override
+                public void onError(String mod, String className, String error) {
+                    // Just log, don't interrupt
+                    LOGGER.debug("Error compiling {}: {}", className, error);
+                }
+                
+                private String truncate(String s, int max) {
+                    if (s.length() <= max) return s;
+                    return "..." + s.substring(s.length() - max + 3);
+                }
+            };
+            
+            addProgressListener(listener);
+            
+            // Start compilation in background
+            runFullCompilation(modsToCompile).thenRun(() -> {
+                removeProgressListener(listener);
+            });
+            
+            // Show dialog (blocks until closed)
+            dialog.setVisible(true);
         });
     }
     

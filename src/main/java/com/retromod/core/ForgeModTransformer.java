@@ -31,9 +31,6 @@ public class ForgeModTransformer {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("RetroMod-ForgeTransform");
 
-    private static final Pattern PAT_VERSION_RANGE = Pattern.compile("versionRange\\s*=\\s*\"\\[([0-9.]+)");
-    private static final Pattern PAT_MOD_ID_TOML = Pattern.compile("modId\\s*=\\s*\"([^\"]+)\"");
-
     /**
      * Forge/NeoForge mod IDs for APIs that RetroMod provides compatibility shims for.
      * When a mod declares a dependency with a restrictive versionRange in mods.toml,
@@ -155,7 +152,8 @@ public class ForgeModTransformer {
             if (entry != null) {
                 String content = new String(jar.getInputStream(entry).readAllBytes());
                 // Match versionRange = "[1.20.6]" or "[1.20.6,)" etc
-                Matcher m = PAT_VERSION_RANGE.matcher(content);
+                Pattern p = Pattern.compile("versionRange\\s*=\\s*\"\\[([0-9.]+)");
+                Matcher m = p.matcher(content);
                 // Skip the first match (usually forge/neoforge version), find minecraft
                 while (m.find()) {
                     String version = m.group(1);
@@ -280,7 +278,8 @@ public class ForgeModTransformer {
             }
 
             // Detect modId = "xxx"
-            Matcher modIdMatcher = PAT_MOD_ID_TOML.matcher(trimmed);
+            Pattern modIdPattern = Pattern.compile("modId\\s*=\\s*\"([^\"]+)\"");
+            Matcher modIdMatcher = modIdPattern.matcher(trimmed);
             if (modIdMatcher.matches()) {
                 currentDepModId = modIdMatcher.group(1);
             }

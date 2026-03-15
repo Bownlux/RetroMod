@@ -24,14 +24,14 @@ public class EnvironmentDetector {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("RetroMod-Env");
 
-    private static volatile Boolean isClient = null;
-    private static volatile Boolean isHeadless = null;
-    private static volatile Boolean isDedicatedServer = null;
+    private static Boolean isClient = null;
+    private static Boolean isHeadless = null;
+    private static Boolean isDedicatedServer = null;
 
     // Architecture and OS (cached on first access)
-    private static volatile String cpuArch = null;
-    private static volatile String osName = null;
-    private static volatile RenderingBackend renderingBackend = null;
+    private static String cpuArch = null;
+    private static String osName = null;
+    private static RenderingBackend renderingBackend = null;
 
     /**
      * CPU architecture family.
@@ -285,50 +285,26 @@ public class EnvironmentDetector {
     //  Client / Server Detection (private)
     // =========================================================================
 
-    /**
-     * Check if we're running on Minecraft 26.1+ (deobfuscated, Mojang official names).
-     * On 26.1+, intermediary names (class_XXXX) don't exist — only Mojang names.
-     */
-    public static boolean is26Plus() {
-        // If Mojang-named MinecraftClient class exists but intermediary doesn't,
-        // we're on 26.1+ where obfuscation was removed
-        try {
-            Class.forName("net.minecraft.client.Minecraft");
-            try {
-                Class.forName("net.minecraft.class_310");
-                return false; // Both exist — pre-26.1 with Mojang mappings (NeoForge)
-            } catch (ClassNotFoundException e) {
-                return true; // Mojang name exists, intermediary doesn't — 26.1+
-            }
-        } catch (ClassNotFoundException e) {
-            // Try server-side detection
-            try {
-                Class.forName("net.minecraft.server.dedicated.DedicatedServer");
-                try {
-                    Class.forName("net.minecraft.class_3176");
-                    return false; // Pre-26.1
-                } catch (ClassNotFoundException e2) {
-                    return true; // 26.1+
-                }
-            } catch (ClassNotFoundException e2) {
-                return false; // Can't determine
-            }
-        }
-    }
-
     private static boolean detectClient() {
         // Check for client-specific classes
-        // Priority: Mojang (26.1+ and NeoForge) → Yarn (Fabric dev) → Intermediary (legacy Fabric prod)
-        String[] clientClasses = {
-            "net.minecraft.client.Minecraft",        // Mojang official (26.1+, NeoForge, Forge)
-            "net.minecraft.client.MinecraftClient",  // Yarn (Fabric dev, legacy)
-            "net.minecraft.class_310"                // Intermediary (legacy Fabric prod, pre-26.1)
-        };
-        for (String className : clientClasses) {
+        try {
+            Class.forName("net.minecraft.client.MinecraftClient");
+            return true;
+        } catch (ClassNotFoundException e) {
+            // Try Forge/NeoForge naming
             try {
-                Class.forName(className);
+                Class.forName("net.minecraft.client.Minecraft");
                 return true;
-            } catch (ClassNotFoundException ignored) {}
+            } catch (ClassNotFoundException e2) {
+                // Not a client
+            }
+        }
+
+        // Check Fabric API
+        try {
+            Class.forName("net.fabricmc.api.EnvType");
+        } catch (ClassNotFoundException e) {
+            // Fabric API not available
         }
 
         // Fallback: check if we have a display
@@ -336,35 +312,29 @@ public class EnvironmentDetector {
     }
 
     private static boolean detectDedicatedServer() {
-        // Check for dedicated server classes
-        // Priority: Mojang (26.1+) → Yarn (legacy Fabric dev) → Intermediary (legacy Fabric prod)
-        String[] serverClasses = {
-            "net.minecraft.server.dedicated.DedicatedServer",              // Mojang (26.1+, Forge, NeoForge)
-            "net.minecraft.server.dedicated.MinecraftDedicatedServer",     // Yarn (legacy Fabric dev)
-            "net.minecraft.class_3176"                                     // Intermediary (legacy Fabric prod)
-        };
-        for (String className : serverClasses) {
+        // Check for dedicated server class
+        try {
+            Class.forName("net.minecraft.server.dedicated.MinecraftDedicatedServer");
+            return true;
+        } catch (ClassNotFoundException e) {
+            // Try alternative naming
             try {
-                Class.forName(className);
-                return true;
-            } catch (ClassNotFoundException ignored) {}
-        }
-
-        // Check MinecraftServer exists but client doesn't → dedicated server
-        String[] serverBaseClasses = {
-            "net.minecraft.server.MinecraftServer",  // Mojang (26.1+)
-            "net.minecraft.class_3248",              // Intermediary (legacy)
-            "net.minecraft.class_3176"               // Intermediary alt (legacy)
-        };
-        for (String serverClass : serverBaseClasses) {
-            try {
-                Class.forName(serverClass);
-                // Server class found — check if client is absent
-                if (!detectClient()) {
-                    return true;
+                Class.forName("net.minecraft.server.MinecraftServer");
+                // This exists on both client and server, so check for client absence
+                try {
+                    Class.forName("net.minecraft.client.MinecraftClient");
+                    return false; // Client exists, not dedicated server
+                } catch (ClassNotFoundException e2) {
+                    try {
+                        Class.forName("net.minecraft.client.Minecraft");
+                        return false; // Forge client exists
+                    } catch (ClassNotFoundException e3) {
+                        return true; // Server classes exist, client doesn't
+                    }
                 }
-                return false; // Both exist → integrated server (client)
-            } catch (ClassNotFoundException ignored) {}
+            } catch (ClassNotFoundException e2) {
+                // Neither exists? Weird state
+            }
         }
 
         // Fallback: if headless, probably a server
@@ -416,11 +386,6 @@ public class EnvironmentDetector {
         LOGGER.info("  CPU: {} ({})", getCpuArch(), getCpuArchString());
         if (isAppleSilicon()) {
             LOGGER.info("  Apple Silicon detected");
-        }
-        if (is26Plus()) {
-            LOGGER.info("  Minecraft 26.1+ detected (deobfuscated, Mojang official names)");
-        } else {
-            LOGGER.info("  Pre-26.1 Minecraft (obfuscated, intermediary names)");
         }
         if (!isDedicatedServer()) {
             LOGGER.info("  Rendering: {}", getRenderingBackend());

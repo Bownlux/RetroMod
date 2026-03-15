@@ -200,8 +200,6 @@ public class AotCompiler {
         
         File[] modFiles = modsFolder.toFile().listFiles(
             (dir, name) -> name.endsWith(".jar") && !name.contains("-aot")
-                && !name.startsWith("retromod-")  // Don't AOT-compile RetroMod itself
-                && !name.contains("-retromod")     // Already transformed — JIT handles any gaps
         );
         
         if (modFiles == null || modFiles.length == 0) {
@@ -254,22 +252,9 @@ public class AotCompiler {
     }
     
     /**
-     * Perform JAR compilation with integrity verification and single retry.
+     * Perform the actual JAR compilation.
      */
     private void compileJar(Path inputJar, Path outputJar, ModVersionInfo modInfo) throws IOException {
-        compileJarCore(inputJar, outputJar, modInfo);
-
-        // Verify jar integrity — if corrupted, restore from original and retry once
-        if (!verifyJarIntegrity(outputJar)) {
-            LOGGER.error("AOT output jar is corrupted! Restoring from original and retrying...");
-            compileJarRetry(inputJar, outputJar, modInfo);
-        }
-    }
-
-    /**
-     * Core JAR compilation logic (no verification/retry — called by compileJar and compileJarRetry).
-     */
-    private void compileJarCore(Path inputJar, Path outputJar, ModVersionInfo modInfo) throws IOException {
         // Collect all classes and analyze them first
         Map<String, byte[]> transformedClasses = new LinkedHashMap<>();
         Map<String, byte[]> originalResources = new LinkedHashMap<>();
@@ -328,9 +313,6 @@ public class AotCompiler {
             manifest.getMainAttributes().putValue("RetroMod-Target-Version", targetMcVersion);
             manifest.getMainAttributes().putValue("RetroMod-Compiled-Time", String.valueOf(System.currentTimeMillis()));
             manifest.getMainAttributes().putValue("RetroMod-Source-Hash", computeHash(inputJar));
-            manifest.getMainAttributes().putValue("RetroMod-Self-Hash", getRetroModSelfHash());
-            manifest.getMainAttributes().putValue("RetroMod-Transformed", "true");
-            manifest.getMainAttributes().putValue("RetroMod-MixinProcessed", "true");
             
             // Add obfuscated class list for JIT fallback
             if (!obfuscatedClasses.isEmpty()) {
@@ -386,59 +368,6 @@ public class AotCompiler {
             writeAotMetadata(jos, modInfo, obfuscatedClasses);
         }
     }
-
-    /**
-     * Verifies that a jar file is not corrupted by reading every entry.
-     * Returns true if the jar is valid, false if any entry is corrupt.
-     */
-    private boolean verifyJarIntegrity(Path jarPath) {
-        try (JarFile jf = new JarFile(jarPath.toFile())) {
-            Enumeration<JarEntry> entries = jf.entries();
-            int verified = 0;
-            while (entries.hasMoreElements()) {
-                JarEntry entry = entries.nextElement();
-                try (InputStream is = jf.getInputStream(entry)) {
-                    byte[] data = is.readAllBytes();
-                    // Verify class files have correct magic bytes
-                    if (entry.getName().endsWith(".class") && data.length >= 4) {
-                        if (data[0] != (byte) 0xCA || data[1] != (byte) 0xFE ||
-                            data[2] != (byte) 0xBA || data[3] != (byte) 0xBE) {
-                            LOGGER.error("Corrupt class file in jar: {} (bad magic bytes)", entry.getName());
-                            return false;
-                        }
-                    }
-                    verified++;
-                } catch (Exception e) {
-                    LOGGER.error("Corrupt entry in jar: {} - {}", entry.getName(), e.getMessage());
-                    return false;
-                }
-            }
-            LOGGER.info("Jar integrity verified: {} entries OK", verified);
-            return true;
-        } catch (Exception e) {
-            LOGGER.error("Jar integrity check failed: {}", e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Retry compilation after a corruption failure.
-     * Does NOT re-verify to avoid infinite recursion (compileJar → retry → compileJar → retry...).
-     */
-    private void compileJarRetry(Path inputJar, Path outputJar, ModVersionInfo modInfo) throws IOException {
-        LOGGER.info("Retrying AOT compilation with fresh copy...");
-        Files.deleteIfExists(outputJar);
-        try {
-            compileJarCore(inputJar, outputJar, modInfo);
-            if (!verifyJarIntegrity(outputJar)) {
-                LOGGER.error("Retry also produced corrupted jar. Falling back to original jar copy.");
-                Files.copy(inputJar, outputJar, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (Exception e) {
-            LOGGER.error("Retry compilation failed: {}. Falling back to original jar copy.", e.getMessage());
-            Files.copy(inputJar, outputJar, StandardCopyOption.REPLACE_EXISTING);
-        }
-    }
     
     /**
      * Compile a class using hybrid AOT/JIT approach.
@@ -475,40 +404,13 @@ public class AotCompiler {
      */
     private byte[] transformClassSimple(byte[] classBytes, String className) {
         ClassReader reader = new ClassReader(classBytes);
-        // Use SafeClassWriter to handle getCommonSuperClass safely in modded environments
-        ClassWriter writer = new SafeAotClassWriter(reader, ClassWriter.COMPUTE_FRAMES);
-
-        try {
-            ClassVisitor visitor = new AotClassVisitor(Opcodes.ASM9, writer, className);
-            reader.accept(visitor, ClassReader.EXPAND_FRAMES);
-            return writer.toByteArray();
-        } catch (Throwable e) {
-            // Fallback: try with COMPUTE_MAXS only
-            ClassWriter fallbackWriter = new SafeAotClassWriter(reader, ClassWriter.COMPUTE_MAXS);
-            ClassVisitor visitor = new AotClassVisitor(Opcodes.ASM9, fallbackWriter, className);
-            reader.accept(visitor, 0);
-            return fallbackWriter.toByteArray();
-        }
-    }
-
-    /**
-     * Safe ClassWriter that handles getCommonSuperClass without crashing
-     * when mod classes aren't available via Class.forName().
-     */
-    private static class SafeAotClassWriter extends ClassWriter {
-        public SafeAotClassWriter(ClassReader classReader, int flags) {
-            super(classReader, flags);
-        }
-
-        @Override
-        protected String getCommonSuperClass(String type1, String type2) {
-            try {
-                return super.getCommonSuperClass(type1, type2);
-            } catch (Throwable e) {
-                // Can't resolve — fall back to java/lang/Object
-                return "java/lang/Object";
-            }
-        }
+        ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
+        
+        // Full transformation pass
+        ClassVisitor visitor = new AotClassVisitor(Opcodes.ASM9, writer, className);
+        reader.accept(visitor, ClassReader.EXPAND_FRAMES);
+        
+        return writer.toByteArray();
     }
     
     /**
@@ -533,42 +435,18 @@ public class AotCompiler {
         @Override
         public void visit(int version, int access, String name, String signature,
                 String superName, String[] interfaces) {
-            // Check superclass redirects first (class-to-interface migrations)
-            var superRedirect = transformer.getSuperclassRedirects() != null
-                ? transformer.getSuperclassRedirects().get(superName) : null;
-
-            String newSuper;
-            String[] newInterfaces;
-
-            if (superRedirect != null) {
-                LOGGER.debug("AOT: Rewriting superclass of {} from {} to {}",
-                        name, superName, superRedirect.newSuperclass());
-                newSuper = superRedirect.newSuperclass();
-                // Merge existing interfaces with additional ones from redirect
-                Set<String> merged = new LinkedHashSet<>();
-                if (interfaces != null) {
-                    for (String iface : interfaces) {
-                        merged.add(transformer.getClassRedirects().getOrDefault(iface, iface));
-                    }
-                }
-                if (superRedirect.addInterfaces() != null) {
-                    Collections.addAll(merged, superRedirect.addInterfaces());
-                }
-                newInterfaces = merged.toArray(new String[0]);
-            } else {
-                // Standard class redirect on superclass
-                newSuper = transformer.getClassRedirects().getOrDefault(superName, superName);
-                if (interfaces != null) {
-                    newInterfaces = new String[interfaces.length];
-                    for (int i = 0; i < interfaces.length; i++) {
-                        newInterfaces[i] = transformer.getClassRedirects()
-                            .getOrDefault(interfaces[i], interfaces[i]);
-                    }
-                } else {
-                    newInterfaces = interfaces;
+            // Handle class-level redirects (superclass changes, interface changes)
+            String newSuper = transformer.getClassRedirects().getOrDefault(superName, superName);
+            
+            String[] newInterfaces = interfaces;
+            if (interfaces != null) {
+                newInterfaces = new String[interfaces.length];
+                for (int i = 0; i < interfaces.length; i++) {
+                    newInterfaces[i] = transformer.getClassRedirects()
+                        .getOrDefault(interfaces[i], interfaces[i]);
                 }
             }
-
+            
             super.visit(version, access, name, signature, newSuper, newInterfaces);
         }
     }
@@ -591,19 +469,9 @@ public class AotCompiler {
             var target = transformer.getMethodRedirects().get(key);
             
             if (target != null) {
-                // Determine if this is an instance→static redirect
-                int redirectOpcode = opcode;
-                boolean redirectIsInterface = isInterface;
-
-                if ((opcode == org.objectweb.asm.Opcodes.INVOKEVIRTUAL
-                    || opcode == org.objectweb.asm.Opcodes.INVOKEINTERFACE)
-                    && target.isInstanceToStatic(descriptor)) {
-                    redirectOpcode = org.objectweb.asm.Opcodes.INVOKESTATIC;
-                    redirectIsInterface = false;
-                }
-
-                super.visitMethodInsn(redirectOpcode, target.owner(), target.name(),
-                    target.desc(), redirectIsInterface);
+                // Redirect the call
+                super.visitMethodInsn(opcode, target.owner(), target.name(), 
+                    target.desc(), isInterface);
             } else {
                 // Check for class redirect
                 String newOwner = transformer.getClassRedirects().getOrDefault(owner, owner);
@@ -613,26 +481,6 @@ public class AotCompiler {
         
         @Override
         public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
-            // Check field redirects first (more specific)
-            var fieldKey = new RetroModTransformer.FieldKey(owner, name);
-            var fieldTarget = transformer.getFieldRedirects().get(fieldKey);
-            if (fieldTarget != null) {
-                // Check if this is a field-to-method redirect
-                if (fieldTarget.newDesc() != null && fieldTarget.newDesc().startsWith("(")) {
-                    // Convert field access to static method call
-                    super.visitMethodInsn(Opcodes.INVOKESTATIC, fieldTarget.owner(),
-                        fieldTarget.name(), fieldTarget.newDesc(), false);
-                    LOGGER.trace("AOT: Redirected field {}.{} -> method {}.{}{}",
-                            owner, name, fieldTarget.owner(), fieldTarget.name(), fieldTarget.newDesc());
-                    return;
-                }
-                // Standard field-to-field redirect
-                String newDesc = (fieldTarget.newDesc() != null) ? fieldTarget.newDesc() : descriptor;
-                super.visitFieldInsn(opcode, fieldTarget.owner(), fieldTarget.name(), newDesc);
-                return;
-            }
-
-            // Fall back to class redirect on owner
             String newOwner = transformer.getClassRedirects().getOrDefault(owner, owner);
             super.visitFieldInsn(opcode, newOwner, name, descriptor);
         }
@@ -682,49 +530,42 @@ public class AotCompiler {
      */
     private boolean isObfuscated(byte[] classBytes) {
         try {
-            // OPTIMIZED: Use ClassReader only for class name (constant pool parse)
-            // then do lightweight method name scan via SKIP_CODE | SKIP_DEBUG | SKIP_FRAMES
             ClassReader reader = new ClassReader(classBytes);
             String className = reader.getClassName();
-
+            
+            // Check for common obfuscation patterns
+            
             // 1. Very short class names (a, b, aa, ab, etc.)
             String simpleName = className.substring(className.lastIndexOf('/') + 1);
-            if (simpleName.length() <= 2 && isAllLowercase(simpleName)) {
+            if (simpleName.length() <= 2 && simpleName.matches("[a-z]+")) {
                 return true;
             }
-
-            // 2. Classes in default package
+            
+            // 2. Classes in default package or obfuscator packages
             if (!className.contains("/")) {
-                return true;
+                return true;  // Default package
             }
-
-            // 3. Check method names (skip code, debug info, and frames for speed)
+            
+            // 3. Check method names
             final boolean[] hasObfuscatedMethods = {false};
             reader.accept(new ClassVisitor(Opcodes.ASM9) {
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor,
                         String signature, String[] exceptions) {
+                    // Short method names that aren't constructors or common names
                     if (name.length() <= 2 && !name.equals("<init>") && !name.equals("<clinit>")) {
                         hasObfuscatedMethods[0] = true;
                     }
                     return null;
                 }
-            }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-
+            }, ClassReader.SKIP_CODE);
+            
             return hasObfuscatedMethods[0];
-
+            
         } catch (Exception e) {
+            // If we can't analyze it, assume not obfuscated
             return false;
         }
-    }
-
-    /** Fast lowercase check without regex allocation */
-    private static boolean isAllLowercase(String s) {
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c < 'a' || c > 'z') return false;
-        }
-        return !s.isEmpty();
     }
     
     /**
@@ -833,51 +674,20 @@ public class AotCompiler {
         try (JarFile jar = new JarFile(cachedJar.toFile())) {
             Manifest manifest = jar.getManifest();
             if (manifest == null) return false;
-
+            
             // Check AOT version
             String aotVersion = manifest.getMainAttributes().getValue(AOT_MANIFEST_KEY);
             if (!AOT_VERSION.equals(aotVersion)) return false;
-
-            // Check RetroMod's own hash — invalidate cache if RetroMod itself was updated
-            // (redirect maps or shim code may have changed)
-            String cachedRetroModHash = manifest.getMainAttributes().getValue("RetroMod-Self-Hash");
-            String currentRetroModHash = getRetroModSelfHash();
-            if (cachedRetroModHash != null && !cachedRetroModHash.equals(currentRetroModHash)) {
-                LOGGER.info("RetroMod itself was updated — invalidating AOT cache for {}",
-                    originalJar.getFileName());
-                return false;
-            }
-
+            
             // Check source hash
             String cachedHash = manifest.getMainAttributes().getValue("RetroMod-Source-Hash");
             String currentHash = computeHash(originalJar);
-
+            
             return cachedHash != null && cachedHash.equals(currentHash);
-
+            
         } catch (Exception e) {
             return false;
         }
-    }
-
-    /**
-     * Get a hash of RetroMod's own JAR to detect when RetroMod is updated.
-     * This ensures AOT caches are invalidated when redirect maps change.
-     */
-    private String getRetroModSelfHash() {
-        try {
-            // Get the location of this class's JAR
-            var location = AotCompiler.class.getProtectionDomain().getCodeSource();
-            if (location != null && location.getLocation() != null) {
-                Path selfJar = Path.of(location.getLocation().toURI());
-                if (Files.isRegularFile(selfJar)) {
-                    return computeHash(selfJar);
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.debug("Could not compute RetroMod self-hash: {}", e.getMessage());
-        }
-        // Fallback: use AOT_VERSION string as hash (less precise but functional)
-        return AOT_VERSION;
     }
     
     /**
@@ -889,11 +699,9 @@ public class AotCompiler {
             byte[] bytes = Files.readAllBytes(file);
             byte[] hash = digest.digest(bytes);
             
-            StringBuilder sb = new StringBuilder(hash.length * 2);
+            StringBuilder sb = new StringBuilder();
             for (byte b : hash) {
-                int v = b & 0xFF;
-                sb.append(Character.forDigit(v >>> 4, 16));
-                sb.append(Character.forDigit(v & 0x0F, 16));
+                sb.append(String.format("%02x", b));
             }
             return sb.toString();
             

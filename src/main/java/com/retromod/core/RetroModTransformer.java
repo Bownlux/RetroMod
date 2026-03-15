@@ -10,7 +10,6 @@ package com.retromod.core;
 import org.objectweb.asm.*;
 import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.Remapper;
-import org.objectweb.asm.tree.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -69,24 +68,6 @@ public class RetroModTransformer implements ClassFileTransformer {
     private RetroModTransformer() {
         // Register default shim package as transformable
         transformablePackages.add("com/retromod/shim/");
-
-        // --- Critical intermediary-named class redirects ---
-        // These use intermediary names directly because production Fabric mods
-        // are compiled with intermediary names, not Yarn names.
-
-        // DirectionProperty (class_2753) was removed/merged into EnumProperty (class_2754).
-        // Referenced by Lithium's hopper/piston mixins and Jade's provider classes.
-        registerClassRedirect("net/minecraft/class_2753", "net/minecraft/class_2754");
-
-        // Math classes removed in 1.19.3 (replaced by JOML).
-        // Redirect to java stubs — these won't be called but prevent NoClassDefFoundError
-        // during class loading of mixin code that merely references the types.
-        // Note: Mixins targeting these are already stripped via KNOWN_REMOVED_CLASSES,
-        // but bytecode in non-mixin code may still reference them as field/param types.
-        registerClassRedirect("net/minecraft/class_1159", "org/joml/Matrix4f");
-        registerClassRedirect("net/minecraft/class_4581", "org/joml/Matrix3f");
-        registerClassRedirect("net/minecraft/class_1158", "org/joml/Quaternionf");
-        registerClassRedirect("net/minecraft/class_1160", "org/joml/Vector3f");
     }
     
     public static RetroModTransformer getInstance() {
@@ -243,10 +224,6 @@ public class RetroModTransformer implements ClassFileTransformer {
             return originalBytes;
         }
 
-        // Pre-process <init> → factory redirects (requires tree API because
-        // NEW/DUP instructions must be removed when <init> is redirected to a static factory)
-        originalBytes = preProcessInitRedirects(originalBytes, className);
-
         ClassReader reader = new ClassReader(originalBytes);
         // Use SafeClassWriter with COMPUTE_FRAMES to properly generate StackMapTable.
         // SafeClassWriter handles getCommonSuperClass safely in modded environments.
@@ -312,130 +289,14 @@ public class RetroModTransformer implements ClassFileTransformer {
         protected String getCommonSuperClass(String type1, String type2) {
             try {
                 return super.getCommonSuperClass(type1, type2);
-            } catch (Throwable e) {
+            } catch (RuntimeException e) {
                 // In modded MC, classes may not be resolvable via Class.forName().
-                // This catches both RuntimeException AND NoClassDefFoundError/ClassNotFoundException
-                // which are Errors, not Exceptions (e.g., Sodium classes missing from classpath).
                 // java/lang/Object is always a valid common superclass.
                 return "java/lang/Object";
             }
         }
     }
     
-    /**
-     * Pre-process constructor-to-factory redirects using tree API.
-     * When a method redirect maps Owner.<init>(args)V → Factory.create(args)LOwner;,
-     * the NEW/DUP instructions must be removed (they can't be POPed — they're
-     * uninitialized references). This requires tree API since the visitor API
-     * has already emitted NEW/DUP by the time we see INVOKESPECIAL.
-     */
-    private byte[] preProcessInitRedirects(byte[] classBytes, String className) {
-        // Fast path: check if any <init> redirects exist at all
-        boolean hasInitRedirects = false;
-        for (MethodKey key : methodRedirects.keySet()) {
-            if ("<init>".equals(key.name())) {
-                hasInitRedirects = true;
-                break;
-            }
-        }
-        if (!hasInitRedirects) return classBytes;
-
-        try {
-            ClassReader reader = new ClassReader(classBytes);
-            ClassNode classNode = new ClassNode();
-            reader.accept(classNode, 0);
-
-            boolean modified = false;
-            for (MethodNode method : classNode.methods) {
-                modified |= rewriteInitSequences(method);
-            }
-
-            if (!modified) return classBytes;
-
-            ClassWriter writer = new SafeClassWriter(reader, ClassWriter.COMPUTE_FRAMES);
-            classNode.accept(writer);
-            return writer.toByteArray();
-        } catch (Exception e) {
-            LOGGER.warn("Failed to pre-process <init> redirects for {}: {}", className, e.getMessage());
-            return classBytes;
-        }
-    }
-
-    /**
-     * Scan a method for NEW/DUP/INVOKESPECIAL <init> sequences and rewrite
-     * them when the <init> has a factory redirect.
-     */
-    private boolean rewriteInitSequences(MethodNode method) {
-        if (method.instructions == null || method.instructions.size() == 0) return false;
-
-        boolean modified = false;
-        // Iterate over a snapshot to safely modify during iteration
-        AbstractInsnNode[] insns = method.instructions.toArray();
-
-        for (AbstractInsnNode insn : insns) {
-            if (insn.getOpcode() != Opcodes.INVOKESPECIAL) continue;
-
-            MethodInsnNode methodInsn = (MethodInsnNode) insn;
-            if (!"<init>".equals(methodInsn.name)) continue;
-
-            MethodKey key = new MethodKey(methodInsn.owner, "<init>", methodInsn.desc);
-            MethodTarget target = methodRedirects.get(key);
-            if (target == null) continue;
-
-            // Found a factory redirect for <init>. Walk backwards to find the matching NEW.
-            TypeInsnNode newInsn = null;
-            AbstractInsnNode dupInsn = null;
-
-            AbstractInsnNode scan = insn.getPrevious();
-            while (scan != null) {
-                // Skip labels, line numbers, and frames
-                if (scan instanceof LabelNode || scan instanceof LineNumberNode || scan instanceof FrameNode) {
-                    scan = scan.getPrevious();
-                    continue;
-                }
-
-                if (scan.getOpcode() == Opcodes.NEW && scan instanceof TypeInsnNode tin) {
-                    if (tin.desc.equals(methodInsn.owner)) {
-                        newInsn = tin;
-                        // Look for DUP immediately after NEW (skipping labels/frames)
-                        AbstractInsnNode afterNew = tin.getNext();
-                        while (afterNew instanceof LabelNode || afterNew instanceof LineNumberNode
-                                || afterNew instanceof FrameNode) {
-                            afterNew = afterNew.getNext();
-                        }
-                        if (afterNew != null && afterNew.getOpcode() == Opcodes.DUP) {
-                            dupInsn = afterNew;
-                        }
-                        break;
-                    }
-                }
-                scan = scan.getPrevious();
-            }
-
-            if (newInsn != null && dupInsn != null) {
-                // Remove NEW and DUP
-                method.instructions.remove(newInsn);
-                method.instructions.remove(dupInsn);
-
-                // Replace INVOKESPECIAL <init> with INVOKESTATIC factory
-                MethodInsnNode replacement = new MethodInsnNode(
-                    Opcodes.INVOKESTATIC,
-                    target.owner(),
-                    target.name(),
-                    target.desc(),
-                    false
-                );
-                method.instructions.set(insn, replacement);
-                modified = true;
-
-                LOGGER.debug("Rewrote NEW/DUP/<init> → INVOKESTATIC factory: {}.{}{} -> {}.{}{}",
-                    methodInsn.owner, methodInsn.name, methodInsn.desc,
-                    target.owner(), target.name(), target.desc());
-            }
-        }
-        return modified;
-    }
-
     /**
      * ASM ClassVisitor that rewrites method calls, field accesses,
      * and superclass references (for class-to-interface migrations).
@@ -514,27 +375,13 @@ public class RetroModTransformer implements ClassFileTransformer {
             MethodTarget target = methodRedirects.get(key);
             
             if (target != null) {
-                // Determine if this is an instance→static redirect
-                // (e.g., INVOKEVIRTUAL CrashReport.method_572() → INVOKESTATIC CrashReportShim.getFileAsFile(Object))
-                int redirectOpcode = opcode;
-                boolean redirectIsInterface = isInterface;
-
-                if ((opcode == org.objectweb.asm.Opcodes.INVOKEVIRTUAL
-                    || opcode == org.objectweb.asm.Opcodes.INVOKEINTERFACE)
-                    && target.isInstanceToStatic(descriptor)) {
-                    redirectOpcode = org.objectweb.asm.Opcodes.INVOKESTATIC;
-                    redirectIsInterface = false;
-                    LOGGER.trace("Instance→static redirect: {}.{}{} -> INVOKESTATIC {}.{}{}",
-                            owner, name, descriptor,
-                            target.owner, target.name, target.desc);
-                } else {
-                    LOGGER.trace("Redirecting {}.{}{} -> {}.{}{}",
-                            owner, name, descriptor,
-                            target.owner, target.name, target.desc);
-                }
-
-                super.visitMethodInsn(redirectOpcode, target.owner, target.name,
-                        target.desc, redirectIsInterface);
+                // Redirect the call
+                LOGGER.trace("Redirecting {}.{}{} -> {}.{}{}",
+                        owner, name, descriptor,
+                        target.owner, target.name, target.desc);
+                
+                super.visitMethodInsn(opcode, target.owner, target.name, 
+                        target.desc, isInterface);
             } else {
                 // No redirect, pass through unchanged
                 super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
@@ -571,19 +418,7 @@ public class RetroModTransformer implements ClassFileTransformer {
     // --- Key/Target record classes ---
     
     public record MethodKey(String owner, String name, String desc) {}
-    public record MethodTarget(String owner, String name, String desc) {
-        /**
-         * Check if this redirect is from an instance method to a static shim.
-         * This is the case when the target descriptor has one more parameter than
-         * the source (the first param is the receiver object).
-         */
-        public boolean isInstanceToStatic(String sourceDesc) {
-            // Compare param count: if target has more params, it's instance→static
-            // Source: ()Ljava/io/File;  (0 params, instance)
-            // Target: (Ljava/lang/Object;)Ljava/io/File;  (1 param, static)
-            return !desc.equals(sourceDesc) && desc.startsWith("(L") && sourceDesc.startsWith("(");
-        }
-    }
+    public record MethodTarget(String owner, String name, String desc) {}
     public record FieldKey(String owner, String name) {}
     public record FieldTarget(String owner, String name, String oldDesc, String newDesc) {}
     public record SuperclassRedirect(String newSuperclass, String[] addInterfaces) {}
@@ -610,9 +445,5 @@ public class RetroModTransformer implements ClassFileTransformer {
 
     public Map<FieldKey, FieldTarget> getFieldRedirects() {
         return Collections.unmodifiableMap(fieldRedirects);
-    }
-
-    public Map<String, SuperclassRedirect> getSuperclassRedirects() {
-        return Collections.unmodifiableMap(superclassRedirects);
     }
 }

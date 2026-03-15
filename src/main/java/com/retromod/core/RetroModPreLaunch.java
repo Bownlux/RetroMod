@@ -9,15 +9,15 @@ import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
-import com.retromod.gui.InGameNotificationManager;
+import javax.swing.*;
+import java.awt.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.ServiceLoader;
-import java.util.jar.*;
+import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 import java.util.regex.*;
 
@@ -62,13 +62,6 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
     private static final String PRIMARY_INPUT = "retromod-input";
     private static final String SECONDARY_INPUT = "mods/retromod-input";
     private static final String PROCESSED_SUFFIX = "/processed";
-
-    // Default MC version if auto-detection fails
-    private static final String DEFAULT_MC_VERSION = "1.21.11";
-
-    // Pre-compiled patterns for version extraction
-    private static final Pattern PAT_MC_VERSION_JSON = Pattern.compile("\"minecraft\"\\s*:\\s*\"([^\"]+)\"");
-    private static final Pattern PAT_VERSION_RANGE_TOML = Pattern.compile("versionRange\\s*=\\s*\"\\[([0-9.]+)");
     
     // Track transformation results
     private static int totalTransformed = 0;
@@ -114,19 +107,12 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
             
             totalTransformed = fromPrimary + fromSecondary;
 
-            // Step 3: Process mixin configs in already-installed mods
-            int mixinFixed = processMixinConfigsInMods(gameDir.resolve("mods"));
-            if (mixinFixed > 0) {
-                totalTransformed += mixinFixed;
-                LOGGER.info("Processed mixin configs in {} already-installed mod(s) — restart required", mixinFixed);
-            }
-
-            // Step 4: Show restart message if we transformed anything
+            // Step 3: Show restart message if we transformed anything
             if (totalTransformed > 0) {
                 showRestartMessage();
             }
 
-            // Step 5: Show complexity warnings for complex mods (still transformed)
+            // Step 4: Show complexity warnings for skipped mods
             if (!skippedComplexMods.isEmpty()) {
                 showComplexityWarning();
             }
@@ -160,22 +146,6 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
             }
             LOGGER.info("Registered {} version shims for transformation", shimCount);
 
-            // =====================================================================
-            // Global redirects: return type changes that apply across many versions
-            // =====================================================================
-
-            // CrashReport.getFile() changed from File to Path in ~1.20.5+
-            // Old: net/minecraft/class_128.method_572()Ljava/io/File;
-            // New: net/minecraft/class_128.method_572()Ljava/nio/file/Path;
-            // Bridge: CrashReportShim.getFileAsFile(CrashReport) -> File
-            transformer.registerMethodRedirect(
-                "net/minecraft/class_128", "method_572",
-                "()Ljava/io/File;",
-                "com/retromod/shim/fabric/embedded/CrashReportShim", "getFileAsFile",
-                "(Ljava/lang/Object;)Ljava/io/File;"
-            );
-            LOGGER.debug("Registered global redirect: CrashReport.getFile() File→Path bridge");
-
             // Load polyfill providers via ServiceLoader
             try {
                 ServiceLoader<com.retromod.polyfill.PolyfillProvider> polyfills =
@@ -208,9 +178,9 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
             return FabricLoader.getInstance()
                 .getModContainer("minecraft")
                 .map(c -> c.getMetadata().getVersion().getFriendlyString())
-                .orElse(DEFAULT_MC_VERSION);
+                .orElse("1.21.11");
         } catch (Exception e) {
-            return DEFAULT_MC_VERSION;
+            return "1.21.11";
         }
     }
     
@@ -441,6 +411,9 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
             // Create transformer
             FabricModTransformer transformer = new FabricModTransformer(targetVersion);
             
+            // Check if force_translate_complex is enabled
+            boolean forceComplex = isForceTranslateEnabled();
+
             for (Path modJar : modsToTransform) {
                 try {
                     String fileName = modJar.getFileName().toString();
@@ -450,48 +423,48 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
                     LOGGER.info("│  Mod version: {}", modVersion != null ? modVersion : "unknown");
                     LOGGER.info("│  Target: {}", targetVersion);
 
-                    // Complexity check — warn but ALWAYS transform
-                    // With required:false on mixins, even complex mods have a chance
+                    // Complexity check — warn if mod is unlikely to work
                     com.retromod.gui.ModComplexityAnalyzer analyzer =
                         new com.retromod.gui.ModComplexityAnalyzer();
                     com.retromod.gui.ModComplexityAnalyzer.ComplexityReport report =
                         analyzer.analyze(modJar);
 
-                    if (report.isUnlikelyToWork()) {
-                        LOGGER.warn("│  ⚠ WARNING: Mod has high complexity (score: {})", report.score());
+                    if (report.isUnlikelyToWork() && !forceComplex) {
+                        LOGGER.warn("│  ⚠ SKIPPED: Mod is unlikely to work (complexity score: {})", report.score());
                         LOGGER.warn("│  Reason: {}", report.reason());
-                        LOGGER.warn("│  Transforming anyway — broken mixins will be safely skipped at runtime");
+                        LOGGER.warn("│  To force, set \"force_translate_complex\": true in config.json");
+                        LOGGER.info("└─ Skipped (too complex)");
                         skippedComplexMods.add(fileName);
+                        // DON'T move to processed — leave it for the user to decide
+                        continue;
+                    }
+
+                    if (report.isUnlikelyToWork() && forceComplex) {
+                        LOGGER.warn("│  ⚠ Force mode: proceeding despite high complexity ({})", report.score());
                     }
 
                     // ALWAYS transform unless EXACT match
                     boolean needsTransform = !isExactVersionMatch(modVersion, targetVersion);
-
-                    boolean success = false;
 
                     if (!needsTransform) {
                         LOGGER.info("│  Status: Already compatible (exact match)");
                         LOGGER.info("└─ Copying directly to mods/");
                         Files.copy(modJar, outputFolder.resolve(fileName),
                             StandardCopyOption.REPLACE_EXISTING);
-                        success = true;
                     } else {
                         LOGGER.info("│  Status: Needs transformation");
                         Path transformed = transformer.transformMod(modJar, outputFolder);
                         if (transformed != null) {
                             LOGGER.info("└─ Created: {}", transformed.getFileName());
                             transformedMods.add(fileName);
-                            success = true;
                         } else {
-                            LOGGER.warn("└─ Transformation failed! Original kept in retromod-input/");
+                            LOGGER.warn("└─ Transformation failed!");
                         }
                     }
-
-                    // Only move original to processed on success — keep it for retry on failure
-                    if (success) {
-                        Path processedPath = processedFolder.resolve(fileName);
-                        Files.move(modJar, processedPath, StandardCopyOption.REPLACE_EXISTING);
-                    }
+                    
+                    // Move original to processed
+                    Path processedPath = processedFolder.resolve(fileName);
+                    Files.move(modJar, processedPath, StandardCopyOption.REPLACE_EXISTING);
                     
                     count++;
                     
@@ -507,161 +480,6 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
         return count;
     }
     
-    /**
-     * Process mixin configs in already-installed mods that haven't been mixin-processed yet.
-     *
-     * IMPORTANT: We CANNOT delete jars from mods/ during the current launch because
-     * Fabric Loader has already scanned and loaded metadata from those files. Deleting
-     * them causes NoSuchFileException when Fabric tries to access the jar later.
-     *
-     * Instead, we copy unprocessed jars to retromod-input/ and create a marker file
-     * so that on the NEXT launch, the old version gets cleaned up before Fabric scans.
-     */
-    private int processMixinConfigsInMods(Path modsFolder) {
-        if (!Files.exists(modsFolder)) return 0;
-
-        Path gameDir = modsFolder.getParent();
-        Path inputFolder = gameDir.resolve(PRIMARY_INPUT);
-
-        int queued = 0;
-
-        try {
-            Files.createDirectories(inputFolder);
-
-            // First, clean up any jars that were flagged for deletion on previous launch
-            cleanupFlaggedJars(modsFolder);
-
-            List<Path> modJars;
-            try (var stream = Files.list(modsFolder)) {
-                modJars = stream
-                    .filter(p -> p.toString().toLowerCase().endsWith(".jar"))
-                    .filter(Files::isRegularFile)
-                    .filter(p -> !p.getFileName().toString().startsWith("retromod-"))
-                    .toList();
-            }
-
-            for (Path modJar : modJars) {
-                try {
-                    if (needsMixinReprocessing(modJar)) {
-                        // Copy to retromod-input/ so the normal pipeline re-transforms it
-                        // Strip the -retromod suffix so it gets treated as a fresh input
-                        String fileName = modJar.getFileName().toString();
-                        String originalName = fileName.replace("-retromod", "");
-                        Path inputPath = inputFolder.resolve(originalName);
-
-                        Files.copy(modJar, inputPath, StandardCopyOption.REPLACE_EXISTING);
-
-                        // DON'T delete the jar now — Fabric already loaded it!
-                        // Instead, flag it for deletion on next launch (before Fabric scans)
-                        Path flagFile = modsFolder.resolve(fileName + ".retromod-delete");
-                        Files.writeString(flagFile, "Delete this jar on next launch - needs mixin reprocessing");
-
-                        queued++;
-                        LOGGER.info("Queued '{}' for re-transformation on next launch (mixin processing needed)", fileName);
-                        transformedMods.add(originalName + " (mixin re-transform, restart needed)");
-                    }
-                } catch (Exception e) {
-                    LOGGER.warn("Could not queue {} for mixin reprocessing: {}",
-                        modJar.getFileName(), e.getMessage());
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.warn("Error scanning mods for mixin processing: {}", e.getMessage());
-        }
-
-        return queued;
-    }
-
-    /**
-     * Clean up jars that were flagged for deletion on a previous launch.
-     *
-     * Only deletes the old jar if:
-     *   1. The corresponding mod exists in retromod-input/ (ready for re-transform), OR
-     *   2. The corresponding mod already exists in retromod-input/processed/ (already re-transformed)
-     *
-     * This prevents data loss if re-transformation fails — the old jar stays until
-     * a replacement is confirmed.
-     */
-    private void cleanupFlaggedJars(Path modsFolder) {
-        Path gameDir = modsFolder.getParent();
-        Path inputFolder = gameDir.resolve(PRIMARY_INPUT);
-        Path processedFolder = inputFolder.resolve("processed");
-
-        try (var stream = Files.list(modsFolder)) {
-            List<Path> flags = stream
-                .filter(p -> p.toString().endsWith(".retromod-delete"))
-                .toList();
-
-            for (Path flagFile : flags) {
-                String jarName = flagFile.getFileName().toString().replace(".retromod-delete", "");
-                Path jarToDelete = modsFolder.resolve(jarName);
-
-                // Derive the original name (without -retromod suffix)
-                String originalName = jarName.replace("-retromod", "");
-
-                // Check if the replacement source exists in retromod-input/ or processed/
-                boolean replacementReady = Files.exists(inputFolder.resolve(originalName))
-                    || Files.exists(processedFolder.resolve(originalName));
-
-                try {
-                    if (replacementReady && Files.exists(jarToDelete)) {
-                        Files.delete(jarToDelete);
-                        LOGGER.info("Cleaned up old jar flagged for deletion: {}", jarName);
-                    } else if (!replacementReady) {
-                        LOGGER.warn("Skipping deletion of {} — no replacement found in retromod-input/", jarName);
-                    }
-                    // Always clean up the flag file
-                    Files.delete(flagFile);
-                } catch (Exception e) {
-                    LOGGER.warn("Could not clean up flagged jar {}: {}", jarName, e.getMessage());
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.debug("Error cleaning up flagged jars: {}", e.getMessage());
-        }
-    }
-
-    /**
-     * Check if a mod JAR needs mixin config reprocessing.
-     * Returns true if:
-     * - It IS a RetroMod-transformed jar (has -retromod suffix or RetroMod-Transformed marker)
-     * - It does NOT have the RetroMod-MixinProcessed manifest marker
-     * - It has mixin config files (*.mixins.json)
-     */
-    private boolean needsMixinReprocessing(Path jarPath) {
-        String fileName = jarPath.getFileName().toString();
-
-        try (JarFile jar = new JarFile(jarPath.toFile())) {
-            Manifest manifest = jar.getManifest();
-
-            // Check if it's a RetroMod-transformed jar
-            boolean isRetroModJar = fileName.contains("-retromod");
-            if (manifest != null) {
-                String transformed = manifest.getMainAttributes().getValue("RetroMod-Transformed");
-                if ("true".equals(transformed)) isRetroModJar = true;
-            }
-            if (!isRetroModJar) return false;
-
-            // Already mixin-processed?
-            if (manifest != null) {
-                String mixinProcessed = manifest.getMainAttributes().getValue("RetroMod-MixinProcessed");
-                if ("true".equals(mixinProcessed)) return false;
-            }
-
-            // Has mixin configs?
-            var entries = jar.entries();
-            while (entries.hasMoreElements()) {
-                String name = entries.nextElement().getName();
-                if (name.endsWith(".mixins.json") || name.endsWith("mixin.json")) {
-                    return true;
-                }
-            }
-        } catch (Exception e) {
-            // Ignore unreadable jars
-        }
-        return false;
-    }
-
     /**
      * Check if mod version EXACTLY matches target (very strict).
      */
@@ -691,24 +509,27 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
             ZipEntry fabricJson = jar.getEntry("fabric.mod.json");
             if (fabricJson != null) {
                 String content = new String(jar.getInputStream(fabricJson).readAllBytes());
-                Matcher m = PAT_MC_VERSION_JSON.matcher(content);
+                Pattern p = Pattern.compile("\"minecraft\"\\s*:\\s*\"([^\"]+)\"");
+                Matcher m = p.matcher(content);
                 if (m.find()) return m.group(1);
             }
-
+            
             // Try Quilt
             ZipEntry quiltJson = jar.getEntry("quilt.mod.json");
             if (quiltJson != null) {
                 String content = new String(jar.getInputStream(quiltJson).readAllBytes());
-                Matcher m = PAT_MC_VERSION_JSON.matcher(content);
+                Pattern p = Pattern.compile("\"minecraft\"\\s*:\\s*\"([^\"]+)\"");
+                Matcher m = p.matcher(content);
                 if (m.find()) return m.group(1);
             }
-
+            
             // Try Forge/NeoForge
             ZipEntry modsToml = jar.getEntry("META-INF/mods.toml");
             if (modsToml == null) modsToml = jar.getEntry("META-INF/neoforge.mods.toml");
             if (modsToml != null) {
                 String content = new String(jar.getInputStream(modsToml).readAllBytes());
-                Matcher m = PAT_VERSION_RANGE_TOML.matcher(content);
+                Pattern p = Pattern.compile("versionRange\\s*=\\s*\"\\[([0-9.]+)");
+                Matcher m = p.matcher(content);
                 if (m.find()) return m.group(1);
             }
             
@@ -741,49 +562,115 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
         LOGGER.info("╚════════════════════════════════════════════════════════════╝");
         LOGGER.info("");
 
-        // Queue in-game notification instead of Swing popup
-        StringBuilder message = new StringBuilder();
-        message.append("RetroMod transformed ").append(totalTransformed).append(" mod(s):\n\n");
-        for (String mod : transformedMods) {
-            String display = mod.length() > 50 ? mod.substring(0, 47) + "..." : mod;
-            message.append("  - ").append(display).append("\n");
+        // Show GUI popup if we can (client-side, not headless)
+        if (EnvironmentDetector.canShowGui()) {
+            showRestartPopup();
         }
-        message.append("\nPlease close Minecraft and launch it again\n");
-        message.append("for the transformed mods to load.\n\n");
-        message.append("This only happens the first time. After restarting,\n");
-        message.append("your old mods will work normally.");
-        InGameNotificationManager.queue("RetroMod - Restart Required", message.toString());
     }
 
     /**
-     * Show warning about mods that had high complexity scores.
-     * These mods WERE still transformed — the warning is informational.
+     * Show a popup dialog telling the user to restart Minecraft.
+     * Runs on a background thread so it doesn't block the main thread during pre-launch.
+     */
+    private void showRestartPopup() {
+        // Run on a separate thread so we don't block Fabric's launch sequence
+        Thread popupThread = new Thread(() -> {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+
+            StringBuilder message = new StringBuilder();
+            message.append("RetroMod transformed ").append(totalTransformed).append(" mod(s):\n\n");
+
+            for (String mod : transformedMods) {
+                String display = mod.length() > 50 ? mod.substring(0, 47) + "..." : mod;
+                message.append("  - ").append(display).append("\n");
+            }
+
+            message.append("\nPlease close Minecraft and launch it again\n");
+            message.append("for the transformed mods to load.\n\n");
+            message.append("This only happens the first time. After restarting,\n");
+            message.append("your old mods will work normally.");
+
+            JOptionPane.showMessageDialog(
+                null,
+                message.toString(),
+                "RetroMod - Restart Required",
+                JOptionPane.INFORMATION_MESSAGE
+            );
+        }, "RetroMod-RestartPopup");
+
+        popupThread.setDaemon(true);
+        popupThread.start();
+    }
+
+    /**
+     * Check if force_translate_complex is enabled in config.
+     */
+    private boolean isForceTranslateEnabled() {
+        try {
+            Path configPath = Path.of("config/retromod/config.json");
+            if (Files.exists(configPath)) {
+                String json = Files.readString(configPath);
+                return json.contains("\"force_translate_complex\": true") ||
+                       json.contains("\"force_translate_complex\":true");
+            }
+        } catch (Exception e) {
+            // Default to false
+        }
+        return false;
+    }
+
+    /**
+     * Show warning about mods that were skipped due to high complexity.
      */
     private void showComplexityWarning() {
         LOGGER.warn("");
         LOGGER.warn("╔════════════════════════════════════════════════════════════╗");
-        LOGGER.warn("║   COMPLEX MODS (MAY HAVE ISSUES)                           ║");
+        LOGGER.warn("║   MODS SKIPPED (UNLIKELY TO WORK)                          ║");
         LOGGER.warn("╠════════════════════════════════════════════════════════════╣");
         for (String mod : skippedComplexMods) {
             String display = mod.length() > 51 ? mod.substring(0, 48) + "..." : mod;
             LOGGER.warn("║   ⚠ {}║", String.format("%-54s", display));
         }
         LOGGER.warn("╠════════════════════════════════════════════════════════════╣");
-        LOGGER.warn("║   These mods use features that may not fully transform     ║");
-        LOGGER.warn("║   (rendering, networking, ASM, etc.). They were still      ║");
-        LOGGER.warn("║   transformed — broken mixins will be safely skipped.      ║");
+        LOGGER.warn("║   These mods were NOT translated because they use          ║");
+        LOGGER.warn("║   features RetroMod cannot fully transform (coremods,      ║");
+        LOGGER.warn("║   heavy reflection, ASM manipulation, etc.).               ║");
+        LOGGER.warn("║                                                            ║");
+        LOGGER.warn("║   To try anyway, set in config/retromod/config.json:       ║");
+        LOGGER.warn("║     \"force_translate_complex\": true                       ║");
         LOGGER.warn("╚════════════════════════════════════════════════════════════╝");
         LOGGER.warn("");
 
-        // Queue for in-game display
-        StringBuilder msg = new StringBuilder();
-        msg.append(skippedComplexMods.size())
-           .append(" mod(s) have high complexity and may not fully work:\n\n");
-        for (String mod : skippedComplexMods) {
-            msg.append("  - ").append(mod).append("\n");
+        // GUI warning if possible
+        if (EnvironmentDetector.canShowGui()) {
+            Thread warningThread = new Thread(() -> {
+                try {
+                    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                } catch (Exception ignored) {}
+
+                StringBuilder msg = new StringBuilder();
+                msg.append("RetroMod skipped ").append(skippedComplexMods.size())
+                   .append(" mod(s) because they are unlikely to work:\n\n");
+                for (String mod : skippedComplexMods) {
+                    msg.append("  - ").append(mod).append("\n");
+                }
+                msg.append("\nThese mods use features that RetroMod cannot fully\n");
+                msg.append("transform (coremods, heavy reflection, ASM, etc.).\n\n");
+                msg.append("To force translation anyway, set:\n");
+                msg.append("  \"force_translate_complex\": true\n");
+                msg.append("in config/retromod/config.json");
+
+                JOptionPane.showMessageDialog(
+                    null,
+                    msg.toString(),
+                    "RetroMod - Mods Skipped",
+                    JOptionPane.WARNING_MESSAGE
+                );
+            }, "RetroMod-ComplexityWarning");
+            warningThread.setDaemon(true);
+            warningThread.start();
         }
-        msg.append("\nThey were still transformed — broken mixins\n");
-        msg.append("will be safely skipped at runtime.");
-        InGameNotificationManager.queue("RetroMod - Complex Mods", msg.toString());
     }
 }

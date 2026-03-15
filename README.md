@@ -2,8 +2,8 @@
 
 > Run older Minecraft mods on newer versions through bytecode transformation and API shimming.
 
-[![Java 25+](https://img.shields.io/badge/Java-25+-blue.svg)](https://adoptium.net/)
-[![Minecraft 26.1](https://img.shields.io/badge/Minecraft-26.1-green.svg)](https://minecraft.net/)
+[![Java 21+](https://img.shields.io/badge/Java-21+-blue.svg)](https://adoptium.net/)
+[![Minecraft 1.21.x](https://img.shields.io/badge/Minecraft-1.21.x-green.svg)](https://minecraft.net/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Beta](https://img.shields.io/badge/Status-Beta-orange.svg)]()
 
@@ -11,7 +11,7 @@
 
 > **This project is currently in beta.** It works for many mods, but some complex mods may still have issues. Always keep backups of your original mod files. Please report bugs on [GitHub Issues](https://github.com/Bownlux/MC-RetroMod/issues).
 
-RetroMod is a drop-in Minecraft mod that transforms older mod bytecode at load time — rewriting renamed classes, redirecting removed APIs, and patching Mixin targets — so old mods can load on newer versions. Supports **Fabric**, **NeoForge**, and **Forge**.
+RetroMod is a drop-in Minecraft mod that transforms older mod bytecode at load time — rewriting renamed methods, redirecting removed APIs, and patching Mixin targets — so old mods just work. Supports **Fabric**, **NeoForge**, and **Forge** with version shims covering Minecraft 1.12.2 all the way through 1.21.11.
 
 ---
 
@@ -25,7 +25,7 @@ RetroMod is a drop-in Minecraft mod that transforms older mod bytecode at load t
 4. Launch again — RetroMod transforms them and shows a restart popup
 5. Restart one more time — done, your old mods work!
 
-> **Why not just drop old mods in `mods/`?** Fabric checks mod versions before RetroMod can run. If you put an old mod directly in `mods/`, Fabric rejects it and crashes (exit code 1). The `retromod-input/` folder lets RetroMod transform the mod first, then move it to `mods/` with the correct version info.
+> **Why not just drop old mods in `mods/`?** Fabric checks mod versions before RetroMod can run. If you put an old mod directly in `mods/`, Fabric rejects it and crashes (exit code 255). The `retromod-input/` folder lets RetroMod transform the mod first, then move it to `mods/` with the correct version info.
 >
 > **Alternative:** Use the CLI to prep everything in one step: `java -jar retromod-cli.jar prepare ~/.minecraft --aot`
 
@@ -62,38 +62,19 @@ RetroMod is a drop-in Minecraft mod that transforms older mod bytecode at load t
 
 ## Supported Versions
 
-### Primary Target: Minecraft 26.1 (Recommended)
+Shims are **chainable** — a 1.12.2 Forge mod can run on 1.21.11 by applying each shim in sequence. **All intermediate versions** (1.16.2, 1.14.1, 1.15.1, etc.) are supported via fuzzy version matching — mods targeting any version within a range are automatically handled.
 
-Starting with Minecraft 26.1, [Mojang removed code obfuscation](https://fabricmc.net/2025/10/31/obfuscation.html). This means all mod loaders — Fabric, NeoForge, and Forge — now use **Mojang's official names** directly. No more intermediary mappings, no more Yarn, no more `class_XXXX` mystery names.
+| Loader | Shims | Range | Stability |
+|--------|-------|-------|-----------|
+| **Fabric** | 31 | 1.14 → ... → 1.21.11 | 1.16.5+: Beta, 1.14–1.15: Alpha |
+| **NeoForge** | 17 | 1.20.1 → ... → 1.21.11 | Beta |
+| **Forge** | 27 | 1.12.2 → ... → 1.20 → 1.21 (NeoForge*) → ... → 1.21.11 | 1.16.5+: Beta, 1.12–1.15: Alpha |
 
-This is a game-changer for RetroMod: **every 1.21.11 and older mod breaks on 26.1**, and RetroMod can fix them by rewriting the old obfuscated names to the new official names. Since all loaders share the same naming system now, one set of redirects works for everyone.
+> **Fuzzy version matching:** If a mod targets an intermediate version like 1.16.2 or 1.14.3, RetroMod automatically resolves it to the nearest milestone shim. This means every MC version from 1.12.2 to 1.21.11 is supported, even versions without their own dedicated shim.
 
-| Loader | Target | Source Range | Status |
-|--------|--------|-------------|--------|
-| **Fabric** | 26.1 | 1.21.11 and older | In Development |
-| **NeoForge** | 26.1 | 1.21.11 and older | In Development |
-| **Forge** | 26.1 (via NeoForge) | 1.20 and older | Planned |
-
-**What works now:**
-- Stripping broken Mixin targets so mods load instead of crashing
-- Rewriting removed class references (DirectionProperty, JOML math classes, etc.)
-- Making Mixin injections optional (`require=0`) so missing targets don't crash
-- Rewriting class references inside Mixin method bodies
-- Relaxing API version constraints (e.g., Cloth Config, Fabric API)
-- Polyfill stubs for 72+ removed APIs
-- Extensive debug system for diagnosing transformation issues
-
-**What we're working toward:**
-- Full intermediary → Mojang official name mapping (the big 26.1 transition)
-- Method/field redirect coverage across all versions
-- Deep API migration (not just class renames, but signature changes)
-- Smart Mixin relocation (retargeting mixins instead of stripping them)
-
-### Legacy: Minecraft 1.21.11
-
-A legacy build of RetroMod exists for 1.21.11, but it is **no longer actively maintained**. The 1.21.11 build has limited redirect coverage due to the intermediary naming system — version shim redirects use Yarn names which don't match the intermediary names in production mod bytecode. The 26.1 version eliminates this problem entirely since Mojang's official names are used everywhere.
-
-> **Note:** Mods may load but have reduced functionality if they depend on APIs that changed significantly. Always keep backups.
+> **Alpha versions (1.12.2–1.15.2):** These cover massive Minecraft changes like "The Flattening" (1.12→1.13) where every block ID, entity name, and NBT class was renamed. Mods from these versions may not fully work and could be unstable. Use at your own risk.
+>
+> **Beta versions (1.16.5+):** More stable but still being tested. Most mods should work. Always keep backups.
 
 ## API Compatibility
 
@@ -186,7 +167,7 @@ retromod batch mods/ --aot
 # Full prep: overrides + transform everything
 retromod prepare ~/.minecraft --aot
 
-# Transform a legacy mod (1.12.2-1.20.x) to 1.21.x (experimental — large gaps may not work)
+# Transform a legacy mod (1.8-1.20.x) to 1.21.x
 retromod legacy oldmod-1.12.2.jar
 
 # Show API differences between versions
@@ -276,7 +257,7 @@ For most users, **gameplay performance is identical to running native mods.** Th
 
 ---
 
-## Polyfill System (What makes us diffrent)
+## Polyfill System (New)
 
 RetroMod's shims handle API **renames and relocations** — when a method or class was moved or renamed between versions. But sometimes APIs are **completely removed** with no direct replacement. When that happens, mods crash with `ClassNotFoundException`, `NoSuchMethodError`, or mixin hierarchy failures.
 
@@ -303,9 +284,25 @@ RetroMod ships with **72+ polyfill stubs** across 10 providers covering every ma
 
 When Minecraft changes a **class to an interface** (e.g., `Explosion` became an interface in newer versions), mods that `extend Explosion` break because you can't extend an interface. RetroMod's polyfill system includes a **superclass redirect** mechanism that rewrites the class hierarchy at load time — changing the superclass to a bridge class and adding the new interface, so the mod loads correctly.
 
-### Polyfill Configuration
+### Configuration
 
-Polyfills are **enabled by default**. You can toggle the entire system or individual categories in the config (see below).
+Polyfills are **enabled by default**. You can toggle the entire system or individual categories in `config/retromod/config.json`:
+
+```json
+{
+  "polyfills_enabled": true,
+  "polyfill_categories": {
+    "fabric_api": true,
+    "rendering": true,
+    "entity": true,
+    "mixin_targets": true,
+    "minecraft_vanilla": true,
+    "forge": true,
+    "neoforge": true,
+    "thirdparty": true
+  }
+}
+```
 
 > **Note:** Polyfill stubs are lightweight no-op implementations. They prevent crashes and let mods load, but the polyfilled functionality itself won't do anything meaningful — the point is that the mod doesn't crash and its other features still work.
 
@@ -324,16 +321,6 @@ Auto-generated on first launch at `config/retromod/config.json`:
   "transform_refmaps": true,
   "remap_reflection": true,
   "polyfills_enabled": true,
-  "polyfill_categories": {
-    "fabric_api": true,
-    "rendering": true,
-    "entity": true,
-    "mixin_targets": true,
-    "minecraft_vanilla": true,
-    "forge": true,
-    "neoforge": true,
-    "thirdparty": true
-  },
   "log_level": "INFO",
   "log_transformations": false,
   "target_mc_version": "auto",
@@ -367,7 +354,11 @@ SHIM CHAIN — find path: e.g. 1.21 → 1.21.1 → ... → 1.21.11
   ↓
 BYTECODE TRANSFORMATION — AOT, partial AOT, or JIT
   ↓
-OUTPUT — rewritten bytecode, embedded API shims, updated Mixins
+POLYFILL INJECTION — stub removed APIs (Fabric, Forge, NeoForge, vanilla, third-party)
+  ↓
+SUPERCLASS REDIRECTS — rewrite class hierarchy for class→interface migrations
+  ↓
+OUTPUT — rewritten bytecode, embedded API shims, polyfill stubs, updated Mixins
 ```
 
 ### Core Components

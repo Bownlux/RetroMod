@@ -142,41 +142,36 @@ public class ApiArchiveManager {
         
         LOGGER.info("Downloading archive: {}", url);
         
-        HttpURLConnection conn = null;
         try {
             URL downloadUrl = new URL(url);
-            conn = (HttpURLConnection) downloadUrl.openConnection();
+            HttpURLConnection conn = (HttpURLConnection) downloadUrl.openConnection();
             conn.setRequestProperty("User-Agent", "RetroMod/1.0");
             conn.setConnectTimeout(30000);
             conn.setReadTimeout(60000);
-
+            
             if (conn.getResponseCode() != 200) {
                 throw new IOException("Failed to download: HTTP " + conn.getResponseCode());
             }
-
+            
             try (InputStream in = conn.getInputStream();
                  OutputStream out = new BufferedOutputStream(new FileOutputStream(targetPath.toFile()))) {
-
+                
                 byte[] buffer = new byte[8192];
                 int read;
                 long total = 0;
-
+                
                 while ((read = in.read(buffer)) != -1) {
                     out.write(buffer, 0, read);
                     total += read;
                 }
-
+                
                 LOGGER.info("Downloaded {} bytes to {}", total, targetPath.getFileName());
             }
-
+            
         } catch (Exception e) {
             // Clean up partial download
             Files.deleteIfExists(targetPath);
             throw new IOException("Download failed: " + url, e);
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
-            }
         }
     }
     

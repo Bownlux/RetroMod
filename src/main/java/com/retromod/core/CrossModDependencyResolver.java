@@ -22,12 +22,7 @@ import java.util.zip.*;
 public class CrossModDependencyResolver {
     
     private static final Logger LOGGER = LoggerFactory.getLogger("RetroMod-Dependencies");
-
-    // Pre-compiled patterns for JSON/TOML parsing
-    private static final Pattern PAT_DEPENDS_BLOCK = Pattern.compile("\"depends\"\\s*:\\s*\\{([^}]+)\\}");
-    private static final Pattern PAT_JSON_KEY = Pattern.compile("\"([^\"]+)\"\\s*:");
-    private static final Pattern PAT_MOD_ID_TOML = Pattern.compile("modId\\s*=\\s*\"([^\"]+)\"");
-
+    
     // Dependencies graph (modId -> list of dependency modIds) - thread-safe
     private final Map<String, List<String>> dependencyGraph = new ConcurrentHashMap<>();
     
@@ -119,10 +114,12 @@ public class CrossModDependencyResolver {
         List<String> deps = new ArrayList<>();
         
         // Parse "depends" object
-        Matcher depsMatcher = PAT_DEPENDS_BLOCK.matcher(content);
+        Pattern depsPattern = Pattern.compile("\"depends\"\\s*:\\s*\\{([^}]+)\\}");
+        Matcher depsMatcher = depsPattern.matcher(content);
         if (depsMatcher.find()) {
             String depsContent = depsMatcher.group(1);
-            Matcher depMatcher = PAT_JSON_KEY.matcher(depsContent);
+            Pattern depPattern = Pattern.compile("\"([^\"]+)\"\\s*:");
+            Matcher depMatcher = depPattern.matcher(depsContent);
             while (depMatcher.find()) {
                 String dep = depMatcher.group(1);
                 // Skip built-in deps
@@ -145,7 +142,8 @@ public class CrossModDependencyResolver {
         String content = new String(jar.getInputStream(entry).readAllBytes());
         
         // Extract mod ID (first occurrence)
-        Matcher modIdMatcher = PAT_MOD_ID_TOML.matcher(content);
+        Pattern modIdPattern = Pattern.compile("modId\\s*=\\s*\"([^\"]+)\"");
+        Matcher modIdMatcher = modIdPattern.matcher(content);
         if (!modIdMatcher.find()) return;
         String modId = modIdMatcher.group(1);
         

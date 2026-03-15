@@ -26,17 +26,17 @@
     </licenses>
 
     <properties>
-        <maven.compiler.source>25</maven.compiler.source>
-        <maven.compiler.target>25</maven.compiler.target>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         
         <!-- Minecraft/Fabric versions -->
-        <minecraft.version>26.1</minecraft.version>
+        <minecraft.version>1.21.4</minecraft.version>
         <fabric.loader.version>0.16.10</fabric.loader.version>
-        <fabric.api.version>0.114.0+26.1</fabric.api.version>
+        <fabric.api.version>0.114.0+1.21.4</fabric.api.version>
         
         <!-- ASM version -->
-        <asm.version>9.8</asm.version>
+        <asm.version>9.7</asm.version>
         
         <!-- Other dependencies -->
         <gson.version>2.10.1</gson.version>
@@ -199,8 +199,8 @@
                                     <message>RetroMod requires Maven 3.8.0 or later. You have ${maven.version}.</message>
                                 </requireMavenVersion>
                                 <requireJavaVersion>
-                                    <version>[25,)</version>
-                                    <message>RetroMod requires Java 25 or later (for Minecraft 26.1+). You have ${java.version}. Install from https://adoptium.net/</message>
+                                    <version>[21,)</version>
+                                    <message>RetroMod requires Java 21 or later. You have ${java.version}. Install from https://adoptium.net/</message>
                                 </requireJavaVersion>
                             </rules>
                         </configuration>
@@ -214,9 +214,9 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
                 <configuration>
-                    <source>25</source>
-                    <target>25</target>
-                    <release>25</release>
+                    <source>21</source>
+                    <target>21</target>
+                    <release>21</release>
                 </configuration>
             </plugin>
 

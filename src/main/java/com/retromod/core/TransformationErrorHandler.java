@@ -7,8 +7,7 @@ package com.retromod.core;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.retromod.gui.InGameNotificationManager;
-
+import javax.swing.*;
 import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.net.URI;
@@ -34,7 +33,7 @@ public class TransformationErrorHandler {
     public static final String GITHUB_ISSUES_URL = "https://github.com/Bownlux/MC-RetroMod/issues/new?title=Bug%20Report";
     
     // Track failed mods for summary
-    private static final List<FailedMod> failedMods = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private static final List<FailedMod> failedMods = new ArrayList<>();
     
     public record FailedMod(
         String modName,
@@ -94,23 +93,58 @@ public class TransformationErrorHandler {
     }
     
     /**
-     * Show error notification in-game (queued for title screen display).
+     * Show error dialog with bug report option.
      */
     private static void showErrorDialog(FailedMod failed) {
-        String message = String.format(
-            "Mod: %s\nError: %s\n\n" +
-            "This mod does NOT work with RetroMod.\n" +
-            "Please report this bug on GitHub:\n" +
-            "github.com/Bownlux/MC-RetroMod/issues",
-            failed.modName(),
-            failed.errorType() + ": " + truncate(failed.errorMessage(), 80)
-        );
+        SwingUtilities.invokeLater(() -> {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+            
+            String message = String.format("""
+                ❌ Mod Transformation Failed!
+                
+                ═══════════════════════════════════════
+                
+                Mod: %s
+                Error: %s
+                
+                ═══════════════════════════════════════
+                
+                This mod does NOT work with RetroMod.
+                
+                Please report this bug so we can fix it!
+                
+                → GitHub: github.com/Bownlux/MC-RetroMod/issues
 
-        // Queue as in-game notification (shown when title screen loads)
-        InGameNotificationManager.queue("RetroMod - Transformation Failed", message);
-
-        // Also copy bug report to clipboard silently
-        copyBugReport(failed);
+                Click "Copy Bug Report" to copy a template,
+                then paste it when creating a new issue on GitHub.
+                
+                ═══════════════════════════════════════
+                """,
+                failed.modName(),
+                failed.errorType() + ": " + truncate(failed.errorMessage(), 50)
+            );
+            
+            int choice = JOptionPane.showOptionDialog(
+                null,
+                message,
+                "RetroMod - Transformation Failed",
+                JOptionPane.YES_NO_CANCEL_OPTION,
+                JOptionPane.ERROR_MESSAGE,
+                null,
+                new String[]{"Open GitHub Issues", "Copy Bug Report", "OK"},
+                "Open GitHub Issues"
+            );
+            
+            if (choice == 0) {
+                // Open GitHub Issues
+                openGitHub();
+            } else if (choice == 1) {
+                // Copy bug report to clipboard
+                copyBugReport(failed);
+            }
+        });
     }
     
     /**
@@ -125,23 +159,45 @@ public class TransformationErrorHandler {
             }
         } catch (Exception e) {
             LOGGER.warn("Could not open browser: {}", e.getMessage());
-            LOGGER.info("Please visit: {}", GITHUB_ISSUES_URL);
+            JOptionPane.showMessageDialog(
+                null,
+                "Please visit: " + GITHUB_ISSUES_URL,
+                "Open GitHub Issues",
+                JOptionPane.INFORMATION_MESSAGE
+            );
         }
     }
-
+    
     /**
      * Copy bug report template to clipboard.
      */
     private static void copyBugReport(FailedMod failed) {
         String report = generateBugReport(failed);
-
+        
         try {
             Toolkit.getDefaultToolkit().getSystemClipboard()
                 .setContents(new StringSelection(report), null);
-            LOGGER.info("Bug report copied to clipboard — paste it at {}", GITHUB_ISSUES_URL);
+            
+            JOptionPane.showMessageDialog(
+                null,
+                "Bug report copied to clipboard!\n\nGo to GitHub Issues and paste it in a new issue.",
+                "Copied!",
+                JOptionPane.INFORMATION_MESSAGE
+            );
         } catch (Exception e) {
-            // Clipboard failed — just log the report
-            LOGGER.info("Bug report for {}:\n{}", failed.modName(), report);
+            // Show the report in a dialog if clipboard fails
+            JTextArea textArea = new JTextArea(report);
+            textArea.setEditable(false);
+            textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+            JScrollPane scrollPane = new JScrollPane(textArea);
+            scrollPane.setPreferredSize(new Dimension(500, 400));
+            
+            JOptionPane.showMessageDialog(
+                null,
+                scrollPane,
+                "Copy this bug report:",
+                JOptionPane.PLAIN_MESSAGE
+            );
         }
     }
     

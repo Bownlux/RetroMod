@@ -4,6 +4,9 @@
  */
 package com.retromod.gui;
 
+import com.retromod.core.*;
+import com.retromod.aot.AotCompiler;
+import com.retromod.shim.ShimRegistry;
 import com.retromod.util.McReflect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,6 +14,8 @@ import org.slf4j.LoggerFactory;
 import java.awt.FileDialog;
 import java.awt.Frame;
 import java.io.File;
+import java.io.FilenameFilter;
+import java.lang.reflect.Method;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -204,13 +209,6 @@ public class RetroModScreen {
      * Tries multiple approaches to find the game dir across all loaders.
      */
     private Path getGameDir() {
-        // Try FabricLoader first (most reliable — not obfuscated)
-        try {
-            Class<?> fabricLoader = Class.forName("net.fabricmc.loader.api.FabricLoader");
-            Object instance = fabricLoader.getMethod("getInstance").invoke(null);
-            return (Path) fabricLoader.getMethod("getGameDir").invoke(instance);
-        } catch (Exception ignored) {}
-
         // Try MC client field (yarn: runDirectory, mojang: gameDirectory)
         java.lang.reflect.Field dirField = McReflect.findField(
             minecraftClient.getClass(),
@@ -224,12 +222,12 @@ public class RetroModScreen {
             } catch (Exception ignored) {}
         }
 
-        // Intermediary fallback: search for File-typed field on the client instance
-        Object dirByType = McReflect.getFieldByType(minecraftClient,
-            minecraftClient.getClass(), File.class);
-        if (dirByType instanceof File f && f.isDirectory()) {
-            return f.toPath();
-        }
+        // Try FabricLoader.getInstance().getGameDir()
+        try {
+            Class<?> fabricLoader = Class.forName("net.fabricmc.loader.api.FabricLoader");
+            Object instance = fabricLoader.getMethod("getInstance").invoke(null);
+            return (Path) fabricLoader.getMethod("getGameDir").invoke(instance);
+        } catch (Exception ignored) {}
 
         // Try NeoForge FMLPaths
         try {

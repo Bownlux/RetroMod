@@ -71,12 +71,6 @@ config/retromod/
 retromod-input/
 retromod-backups/
 
-# Architectury injection cache (auto-generated, should never be committed)
-architectury_inject_*/
-
-# Compiled classes (should never be in repo root)
-*.class
-
 # Roadmap
 roadmap*
 ROADMAP*

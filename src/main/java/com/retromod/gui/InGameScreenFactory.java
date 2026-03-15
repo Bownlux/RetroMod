@@ -12,6 +12,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Creates in-game Minecraft screens via reflection.
@@ -50,32 +51,33 @@ public final class InGameScreenFactory {
 
         screenClass = McReflect.findClass(
             "net.minecraft.client.gui.screen.Screen",
-            "net.minecraft.client.gui.screens.Screen",
-            "net.minecraft.class_437"
+            "net.minecraft.client.gui.screens.Screen"
         );
 
         textClass = McReflect.findClass(
             "net.minecraft.text.Text",
-            "net.minecraft.network.chat.Component",
-            "net.minecraft.class_2561"
+            "net.minecraft.network.chat.Component"
         );
 
         confirmScreenClass = McReflect.findClass(
             "net.minecraft.client.gui.screen.ConfirmScreen",
-            "net.minecraft.client.gui.screens.ConfirmLinkScreen",
-            "net.minecraft.class_3985"
+            "net.minecraft.client.gui.screens.ConfirmLinkScreen"
         );
+        // Fallback: try the simpler ConfirmScreen
+        if (confirmScreenClass == null) {
+            confirmScreenClass = McReflect.findClass(
+                "net.minecraft.client.gui.screen.ConfirmScreen"
+            );
+        }
 
         minecraftClientClass = McReflect.findClass(
             "net.minecraft.client.MinecraftClient",
-            "net.minecraft.client.Minecraft",
-            "net.minecraft.class_310"
+            "net.minecraft.client.Minecraft"
         );
 
         buttonWidgetClass = McReflect.findClass(
             "net.minecraft.client.gui.widget.ButtonWidget",
-            "net.minecraft.client.gui.components.Button",
-            "net.minecraft.class_4185"
+            "net.minecraft.client.gui.components.Button"
         );
 
         if (screenClass == null || textClass == null || minecraftClientClass == null) {
@@ -140,23 +142,10 @@ public final class InGameScreenFactory {
             Object client = getClientInstance();
             if (client == null) return;
 
-            Method setScreenMethod = McReflect.findMethod(minecraftClientClass,
+            Method setScreen = McReflect.findMethod(minecraftClientClass,
                 new Class[]{screenClass}, "setScreen");
-            if (setScreenMethod == null) return;
-
-            // Schedule on the render/main thread to avoid crashes
-            Method execute = McReflect.findMethod(minecraftClientClass,
-                new Class[]{Runnable.class}, "execute", "tell");
-            if (execute != null) {
-                final Method ssm = setScreenMethod;
-                final Object c = client;
-                execute.invoke(client, (Runnable) () -> {
-                    try { ssm.invoke(c, screen); }
-                    catch (Exception e) { LOGGER.warn("setScreen failed on render thread: {}", e.getMessage()); }
-                });
-            } else {
-                // Fallback: direct call (risky but better than nothing)
-                setScreenMethod.invoke(client, screen);
+            if (setScreen != null) {
+                setScreen.invoke(client, screen);
             }
         } catch (Exception e) {
             LOGGER.warn("Could not set MC screen: {}", e.getMessage());
@@ -265,8 +254,7 @@ public final class InGameScreenFactory {
             // Try using NoticeScreen if available (some MC versions)
             Class<?> noticeScreenClass = McReflect.findClass(
                 "net.minecraft.client.gui.screen.NoticeScreen",
-                "net.minecraft.client.gui.screens.AlertScreen",
-                "net.minecraft.class_410"
+                "net.minecraft.client.gui.screens.NoticeScreen"
             );
 
             if (noticeScreenClass != null) {

@@ -57,11 +57,6 @@ public class ShimRegistry {
         aliases.put("1.16.3", "1.16.5");
         aliases.put("1.16.4", "1.16.5");
 
-        // 26.x → 26.1 (primary deobfuscated target)
-        aliases.put("26.1.0", "26.1");
-        aliases.put("26.1.1", "26.1");
-        aliases.put("26.1.2", "26.1");
-
         VERSION_ALIASES = Collections.unmodifiableMap(aliases);
     }
 

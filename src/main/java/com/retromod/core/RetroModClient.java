@@ -10,6 +10,7 @@ import net.fabricmc.api.Environment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.retromod.gui.RetroModGui;
 import com.retromod.gui.TitleScreenButtonInjector;
 import com.retromod.util.McReflect;
 import java.lang.reflect.Method;

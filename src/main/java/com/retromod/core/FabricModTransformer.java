@@ -100,23 +100,6 @@ public class FabricModTransformer {
         "autoreglib", "auto-reg-lib"
     );
 
-    // Pre-compiled regex patterns (avoid Pattern.compile in hot loops)
-    private static final Pattern PAT_MOD_ID = Pattern.compile("\"id\"\\s*:\\s*\"([^\"]+)\"");
-    private static final Pattern PAT_MC_VERSION = Pattern.compile("\"minecraft\"\\s*:\\s*\"([^\"]+)\"");
-    private static final Pattern PAT_MOD_NAME = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"");
-    private static final Pattern PAT_PACKAGE = Pattern.compile("\"package\"\\s*:\\s*\"([^\"]+)\"");
-    private static final Pattern PAT_MIXINS_ARRAY = Pattern.compile("\"mixins\"\\s*:\\s*\\[([^\\]]+)\\]");
-    private static final Pattern PAT_QUOTED_STRING = Pattern.compile("\"([^\"]+)\"");
-    private static final Pattern PAT_BREAKS = Pattern.compile("\"breaks\"\\s*:\\s*\\{");
-    private static final Pattern PAT_DEPENDS_KEY = Pattern.compile("\"([a-z][a-z0-9_-]*)\"\\s*:");
-    private static final Pattern PAT_DEP_UPPER_BOUND = Pattern.compile(
-        "\"([a-z0-9_-]+)\"\\s*:\\s*\"([^\"]*<[^\"]+)\"", Pattern.MULTILINE);
-    private static final Pattern PAT_CLIENT_ARRAY = Pattern.compile("\"client\"\\s*:\\s*\\[([^\\]]+)\\]");
-    private static final Pattern PAT_SERVER_ARRAY = Pattern.compile("\"server\"\\s*:\\s*\\[([^\\]]+)\\]");
-
-    /** Cache for dynamically-built patterns keyed on the quoted string used to build them. */
-    private static final Map<String, Pattern> DYNAMIC_PATTERN_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
-
     private final String targetMcVersion;
     private final RetroModTransformer bytecodeTransformer;
     
@@ -265,8 +248,8 @@ public class FabricModTransformer {
         try (JarFile jar = new JarFile(jarPath.toFile())) {
             ZipEntry entry = jar.getEntry("fabric.mod.json");
             if (entry != null) {
-                String content = new String(readAndClose(jar.getInputStream(entry)));
-                Pattern pattern = PAT_MOD_ID;
+                String content = new String(jar.getInputStream(entry).readAllBytes());
+                Pattern pattern = Pattern.compile("\"id\"\\s*:\\s*\"([^\"]+)\"");
                 Matcher matcher = pattern.matcher(content);
                 if (matcher.find()) {
                     return matcher.group(1);
@@ -285,8 +268,8 @@ public class FabricModTransformer {
         try (JarFile jar = new JarFile(jarPath.toFile())) {
             ZipEntry entry = jar.getEntry("fabric.mod.json");
             if (entry != null) {
-                String content = new String(readAndClose(jar.getInputStream(entry)));
-                Pattern pattern = PAT_MC_VERSION;
+                String content = new String(jar.getInputStream(entry).readAllBytes());
+                Pattern pattern = Pattern.compile("\"minecraft\"\\s*:\\s*\"([^\"]+)\"");
                 Matcher matcher = pattern.matcher(content);
                 if (matcher.find()) {
                     return matcher.group(1);
@@ -305,8 +288,8 @@ public class FabricModTransformer {
         try (JarFile jar = new JarFile(jarPath.toFile())) {
             ZipEntry entry = jar.getEntry("fabric.mod.json");
             if (entry != null) {
-                String content = new String(readAndClose(jar.getInputStream(entry)));
-                Pattern pattern = PAT_MOD_NAME;
+                String content = new String(jar.getInputStream(entry).readAllBytes());
+                Pattern pattern = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"");
                 Matcher matcher = pattern.matcher(content);
                 if (matcher.find()) {
                     return matcher.group(1);
@@ -378,43 +361,12 @@ public class FabricModTransformer {
             }
         }
         
-        // STRICT CHECK 4: Version range that includes target version
-        // e.g., ">=1.21.0 <1.22" when target is "1.21.11"
-        // Parse ranges like ">=1.21.0 <1.22" or ">=1.21 <=1.21.99"
-        if (modMcVersion.contains(">=") && modMcVersion.contains("<")) {
-            try {
-                String[] parts = modMcVersion.split("\\s+");
-                String minStr = null, maxStr = null;
-                boolean maxInclusive = false;
-                for (String part : parts) {
-                    if (part.startsWith(">=")) minStr = part.substring(2).trim();
-                    else if (part.startsWith("<=")) { maxStr = part.substring(2).trim(); maxInclusive = true; }
-                    else if (part.startsWith("<")) maxStr = part.substring(1).trim();
-                }
-                if (minStr != null && maxStr != null) {
-                    // Pad versions to compare: "1.21" -> "1.21.0", "1.22" -> "1.22.0"
-                    if (compareVersions(targetMcVersion, minStr) >= 0 &&
-                        (maxInclusive ? compareVersions(targetMcVersion, maxStr) <= 0
-                                      : compareVersions(targetMcVersion, maxStr) < 0)) {
-                        LOGGER.debug("Native: range match {} contains {}", modMcVersion, targetMcVersion);
-                        return true;
-                    }
-                }
-            } catch (Exception e) {
-                // Fall through to default
-            }
-        }
-
         // DEFAULT: NOT native - transform it!
         // It's safer to transform a native mod (still works) than to
         // skip transforming an old mod (crashes)
         return false;
     }
-
-    /**
-     * Compare two version strings numerically.
-     * Returns negative if a < b, 0 if equal, positive if a > b.
-     */
+    
     /**
      * Simple version comparison (returns positive if v1 > v2, 0 if equal, negative if v1 < v2)
      */
@@ -431,11 +383,10 @@ public class FabricModTransformer {
             }
             return 0;
         } catch (Exception e) {
-            // When in doubt, treat versions as different so mod gets transformed
-            return -1;
+            return 0;
         }
     }
-
+    
     /**
      * Check if a mod uses Mixins.
      */
@@ -444,10 +395,7 @@ public class FabricModTransformer {
             // Check fabric.mod.json for mixins array
             ZipEntry fabricJson = jar.getEntry("fabric.mod.json");
             if (fabricJson != null) {
-                String content;
-                try (InputStream is = jar.getInputStream(fabricJson)) {
-                    content = new String(is.readAllBytes());
-                }
+                String content = new String(jar.getInputStream(fabricJson).readAllBytes());
                 if (content.contains("\"mixins\"") && !content.contains("\"mixins\": []")) {
                     return true;
                 }
@@ -475,19 +423,12 @@ public class FabricModTransformer {
      * Extract JAR to directory.
      */
     private void extractJar(Path jarPath, Path outputDir) throws IOException {
-        Path normalizedOutputDir = outputDir.normalize();
         try (JarFile jar = new JarFile(jarPath.toFile())) {
             var entries = jar.entries();
             while (entries.hasMoreElements()) {
                 JarEntry entry = entries.nextElement();
-                Path outputPath = normalizedOutputDir.resolve(entry.getName()).normalize();
-
-                // Zip Slip protection: ensure resolved path stays within output directory
-                if (!outputPath.startsWith(normalizedOutputDir)) {
-                    LOGGER.warn("Zip Slip detected, skipping entry: {}", entry.getName());
-                    continue;
-                }
-
+                Path outputPath = outputDir.resolve(entry.getName());
+                
                 if (entry.isDirectory()) {
                     Files.createDirectories(outputPath);
                 } else {
@@ -565,26 +506,24 @@ public class FabricModTransformer {
         Set<String> mixinClasses = new HashSet<>();
         
         try {
-            // Look for mixin config files — must match all patterns that isMixinConfigFile() matches
+            // Look for mixin config files
             try (var stream = Files.walk(dir)) {
-                stream.filter(p -> {
-                        String name = dir.relativize(p).toString().replace(File.separator, "/");
-                        return Files.isRegularFile(p) && isMixinConfigFile(name);
-                    })
+                stream.filter(p -> p.toString().endsWith(".mixins.json") || 
+                                   p.getFileName().toString().equals("mixins.json"))
                     .forEach(mixinConfig -> {
                         try {
                             String content = Files.readString(mixinConfig);
                             // Extract package
-                            Pattern pkgPattern = PAT_PACKAGE;
+                            Pattern pkgPattern = Pattern.compile("\"package\"\\s*:\\s*\"([^\"]+)\"");
                             Matcher pkgMatcher = pkgPattern.matcher(content);
                             String pkg = pkgMatcher.find() ? pkgMatcher.group(1).replace('.', '/') + "/" : "";
                             
                             // Extract mixins array
-                            Pattern mixinPattern = PAT_MIXINS_ARRAY;
+                            Pattern mixinPattern = Pattern.compile("\"mixins\"\\s*:\\s*\\[([^\\]]+)\\]");
                             Matcher mixinMatcher = mixinPattern.matcher(content);
                             if (mixinMatcher.find()) {
                                 String mixinsStr = mixinMatcher.group(1);
-                                Pattern classPattern = PAT_QUOTED_STRING;
+                                Pattern classPattern = Pattern.compile("\"([^\"]+)\"");
                                 Matcher classMatcher = classPattern.matcher(mixinsStr);
                                 while (classMatcher.find()) {
                                     mixinClasses.add(pkg + classMatcher.group(1).replace('.', '/'));
@@ -592,11 +531,12 @@ public class FabricModTransformer {
                             }
                             
                             // Also check client/server arrays
-                            for (Pattern arrayPattern : new Pattern[]{PAT_CLIENT_ARRAY, PAT_SERVER_ARRAY}) {
+                            for (String arrayName : new String[]{"client", "server"}) {
+                                Pattern arrayPattern = Pattern.compile("\"" + arrayName + "\"\\s*:\\s*\\[([^\\]]+)\\]");
                                 Matcher arrayMatcher = arrayPattern.matcher(content);
                                 if (arrayMatcher.find()) {
                                     String arrayStr = arrayMatcher.group(1);
-                                    Pattern classPattern2 = PAT_QUOTED_STRING;
+                                    Pattern classPattern2 = Pattern.compile("\"([^\"]+)\"");
                                     Matcher classMatcher2 = classPattern2.matcher(arrayStr);
                                     while (classMatcher2.find()) {
                                         mixinClasses.add(pkg + classMatcher2.group(1).replace('.', '/'));
@@ -642,7 +582,7 @@ public class FabricModTransformer {
      * Extract minecraft version from fabric.mod.json content.
      */
     private String extractVersionFromContent(String json) {
-        Pattern p = PAT_MC_VERSION;
+        Pattern p = Pattern.compile("\"minecraft\"\\s*:\\s*\"([^\"]+)\"");
         Matcher m = p.matcher(json);
         return m.find() ? m.group(1) : "unknown";
     }
@@ -663,50 +603,55 @@ public class FabricModTransformer {
      * API differences at runtime.
      */
     private String updateVersionRequirements(String json, String originalVersion) {
-        String updated = json;
+        // Replace minecraft dependency with EXACT target version
+        // This is the most reliable approach
+        Pattern minecraftPattern = Pattern.compile(
+            "(\"minecraft\"\\s*:\\s*)\"[^\"]+\"",
+            Pattern.MULTILINE
+        );
 
-        // =====================================================================
-        // 1. Fix "minecraft" dependency (string or array format)
-        // =====================================================================
-        // Array: "minecraft": ["1.20.5", "1.20.6"] → "minecraft": "1.21.11"
-        updated = replaceDepValue(updated, "minecraft", "\"" + targetMcVersion + "\"");
+        // Use exact version match - most reliable
+        String updated = minecraftPattern.matcher(json).replaceAll(
+            "$1\"" + targetMcVersion + "\""
+        );
 
-        // =====================================================================
-        // 2. Relax loader/API dependencies
-        // =====================================================================
-        updated = replaceDepValue(updated, "fabricloader", "\">=0.14.0\"");
-        updated = replaceDepValue(updated, "fabric-api", "\"*\"");
-        updated = replaceDepValue(updated, "fabric", "\"*\"");
+        // Update fabricloader to be more permissive (many versions work)
+        Pattern loaderPattern = Pattern.compile(
+            "(\"fabricloader\"\\s*:\\s*)\"[^\"]+\"",
+            Pattern.MULTILINE
+        );
+        updated = loaderPattern.matcher(updated).replaceAll(
+            "$1\">=0.14.0\""
+        );
 
-        // =====================================================================
-        // 3. Relax ALL cross-mod dependencies in "depends" to "*"
-        //    Mods like Iris require specific Sodium versions — RetroMod can't
-        //    guarantee those versions, and the mod may still partially work.
-        //    Array format like ["0.5.9", "0.5.11"] must also be handled.
-        // =====================================================================
-        updated = relaxAllCrossModDeps(updated);
+        // Update fabric-api to be more permissive
+        Pattern fabricApiPattern = Pattern.compile(
+            "(\"fabric-api\"\\s*:\\s*)\"[^\"]+\"",
+            Pattern.MULTILINE
+        );
+        updated = fabricApiPattern.matcher(updated).replaceAll(
+            "$1\"*\""
+        );
 
-        // =====================================================================
-        // 4. Remove "breaks" section entirely
-        //    Mods declare "breaks" to prevent loading with specific other mods/
-        //    versions. After transformation the breakage reason is usually gone
-        //    (e.g., Voice Chat breaks fabric-api for networking reasons on 1.21.1
-        //    but RetroMod patches the networking code).
-        // =====================================================================
-        updated = removeBreaksSection(updated);
+        // Update fabric (alternative fabric-api name)
+        Pattern fabricPattern = Pattern.compile(
+            "(\"fabric\"\\s*:\\s*)\"[^\"]+\"",
+            Pattern.MULTILINE
+        );
+        updated = fabricPattern.matcher(updated).replaceAll(
+            "$1\"*\""
+        );
 
-        // Also remove "conflicts" section — same logic as "breaks"
-        updated = removeJsonSection(updated, "conflicts");
-
-        // =====================================================================
-        // 5. Relax shimmed API dependencies
-        // =====================================================================
+        // Relax ALL shimmed third-party API dependencies
+        // RetroMod provides bytecode shims for these APIs, so the version constraint
+        // in fabric.mod.json is no longer needed — the transformed code will work
+        // with whatever version is installed.
         updated = relaxShimmedApiDependencies(updated);
+
+        // Also move strict API deps from "depends" to "suggests" if they'd still block
         updated = moveBlockingDepsToSuggests(updated);
 
-        // =====================================================================
-        // 6. Add RetroMod transformation marker
-        // =====================================================================
+        // Add RetroMod transformation marker
         if (!updated.contains("\"retromod_transformed\"")) {
             updated = updated.replaceFirst(
                 "\\}\\s*$",
@@ -715,278 +660,6 @@ public class FabricModTransformer {
         }
 
         return updated;
-    }
-
-    /**
-     * Replace a dependency value ONLY inside "depends" block, handling both string and array formats:
-     *   "key": "value"       → "key": newValue
-     *   "key": ["v1", "v2"]  → "key": newValue
-     *
-     * Scoped to "depends" block to avoid corrupting other JSON sections (custom, contact, etc.).
-     */
-    private String replaceDepValue(String json, String key, String newValue) {
-        // Find the "depends" block using balanced-brace matching
-        String dependsContent = extractJsonBlock(json, "depends");
-        if (dependsContent == null) {
-            return json; // No depends block
-        }
-
-        int blockStart = json.indexOf(dependsContent);
-        if (blockStart < 0) return json;
-
-        String updatedDepends = dependsContent;
-        String quotedKey = Pattern.quote(key);
-
-        // Array format first: "key": [...]
-        Pattern arrayPattern = DYNAMIC_PATTERN_CACHE.computeIfAbsent(
-            "dep-arr:" + key,
-            k -> Pattern.compile("(\"" + quotedKey + "\"\\s*:\\s*)\\[[^\\]]*\\]", Pattern.MULTILINE)
-        );
-        updatedDepends = arrayPattern.matcher(updatedDepends).replaceAll("$1" + Matcher.quoteReplacement(newValue));
-
-        // String format: "key": "..."
-        Pattern stringPattern = DYNAMIC_PATTERN_CACHE.computeIfAbsent(
-            "dep-str:" + key,
-            k -> Pattern.compile("(\"" + quotedKey + "\"\\s*:\\s*)\"[^\"]*\"", Pattern.MULTILINE)
-        );
-        updatedDepends = stringPattern.matcher(updatedDepends).replaceAll("$1" + Matcher.quoteReplacement(newValue));
-
-        if (!updatedDepends.equals(dependsContent)) {
-            return json.substring(0, blockStart) + updatedDepends + json.substring(blockStart + dependsContent.length());
-        }
-        return json;
-    }
-
-    /**
-     * Extract the content of a JSON block by key, handling nested braces correctly.
-     * Returns the content between the outermost { and }, or null if not found.
-     *
-     * Example: for key "depends" in {"depends": {"a": "1", "b": {"v": "2"}}},
-     * returns {"a": "1", "b": {"v": "2"}}  (the full nested content).
-     */
-    private static String extractJsonBlock(String json, String key) {
-        // Find "key" :
-        Pattern keyPattern = DYNAMIC_PATTERN_CACHE.computeIfAbsent(
-            "block:" + key,
-            k -> Pattern.compile("\"" + Pattern.quote(key) + "\"\\s*:\\s*\\{")
-        );
-        Matcher keyMatcher = keyPattern.matcher(json);
-        if (!keyMatcher.find()) return null;
-
-        int braceStart = keyMatcher.end() - 1; // Position of opening {
-        int depth = 0;
-        boolean inString = false;
-        boolean escape = false;
-
-        for (int i = braceStart; i < json.length(); i++) {
-            char c = json.charAt(i);
-
-            if (escape) {
-                escape = false;
-                continue;
-            }
-            if (c == '\\' && inString) {
-                escape = true;
-                continue;
-            }
-            if (c == '"') {
-                inString = !inString;
-                continue;
-            }
-            if (inString) continue;
-
-            if (c == '{') depth++;
-            else if (c == '}') {
-                depth--;
-                if (depth == 0) {
-                    // Return content between { and } (exclusive)
-                    return json.substring(braceStart + 1, i);
-                }
-            }
-        }
-        return null; // Unbalanced braces
-    }
-
-    /**
-     * Relax all cross-mod dependencies in the "depends" block to "*".
-     *
-     * Keeps essential deps (minecraft, fabricloader, java, fabric-api, fabric)
-     * but relaxes everything else (sodium, cloth-config, etc.) since RetroMod
-     * can't guarantee specific versions of other mods are installed.
-     *
-     * Handles both string and array value formats.
-     */
-    private String relaxAllCrossModDeps(String json) {
-        // Deps to keep strict (already handled above or essential)
-        Set<String> keepStrict = Set.of(
-            "minecraft", "fabricloader", "java", "fabric-api", "fabric",
-            "fabric-language-kotlin", "mixinextras"
-        );
-
-        // IMPORTANT: Only modify keys INSIDE the "depends" block, not the whole JSON!
-        // Extract the depends block, find its keys, then do targeted replacements.
-
-        // Find the "depends" block using balanced-brace matching (handles nested objects)
-        String dependsContent = extractJsonBlock(json, "depends");
-        if (dependsContent == null) {
-            return json; // No depends block
-        }
-
-        // Find all keys inside the depends block
-        Matcher keyMatcher = PAT_DEPENDS_KEY.matcher(dependsContent);
-        Set<String> keysToRelax = new LinkedHashSet<>();
-
-        while (keyMatcher.find()) {
-            String depKey = keyMatcher.group(1);
-            if (!keepStrict.contains(depKey)) {
-                keysToRelax.add(depKey);
-            }
-        }
-
-        // Now replace ONLY within the depends block
-        String updatedDepends = dependsContent;
-        for (String depKey : keysToRelax) {
-            // Replace array format: "key": [...] -> "key": "*"
-            Pattern arrPat = DYNAMIC_PATTERN_CACHE.computeIfAbsent(
-                "dep-arr:" + depKey,
-                k -> Pattern.compile("(\"" + Pattern.quote(depKey) + "\"\\s*:\\s*)\\[[^\\]]*\\]", Pattern.MULTILINE)
-            );
-            updatedDepends = arrPat.matcher(updatedDepends).replaceAll("$1\"*\"");
-
-            // Replace string format: "key": "..." -> "key": "*"
-            Pattern strPat = DYNAMIC_PATTERN_CACHE.computeIfAbsent(
-                "dep-str:" + depKey,
-                k -> Pattern.compile("(\"" + Pattern.quote(depKey) + "\"\\s*:\\s*)\"[^\"]*\"", Pattern.MULTILINE)
-            );
-            updatedDepends = strPat.matcher(updatedDepends).replaceAll("$1\"*\"");
-
-            LOGGER.debug("  Relaxed cross-mod dependency: {} → \"*\"", depKey);
-        }
-
-        // Replace the depends block content in the original JSON
-        if (!updatedDepends.equals(dependsContent)) {
-            int contentStart = json.indexOf(dependsContent);
-            if (contentStart >= 0) {
-                return json.substring(0, contentStart)
-                     + updatedDepends
-                     + json.substring(contentStart + dependsContent.length());
-            }
-        }
-
-        return json;
-    }
-
-    /**
-     * Remove the "breaks" section from fabric.mod.json entirely.
-     *
-     * The "breaks" field tells Fabric Loader to refuse to load if a listed mod
-     * is present. After RetroMod transformation, these breakage declarations are
-     * usually no longer valid (the incompatibility was version-specific).
-     *
-     * Example: Voice Chat 1.21.1 declares breaks: {"fabric-api": "*"} because
-     * it has its own networking. After transformation this blocks loading entirely.
-     */
-    private String removeBreaksSection(String json) {
-        // Find the "breaks" key and its full block using balanced-brace matching
-        Pattern keyPattern = PAT_BREAKS;
-        Matcher keyMatcher = keyPattern.matcher(json);
-        if (!keyMatcher.find()) return json;
-
-        // Find the matching closing brace
-        int braceStart = keyMatcher.end() - 1;
-        int depth = 0;
-        boolean inString = false;
-        boolean escape = false;
-        int braceEnd = -1;
-
-        for (int i = braceStart; i < json.length(); i++) {
-            char c = json.charAt(i);
-            if (escape) { escape = false; continue; }
-            if (c == '\\' && inString) { escape = true; continue; }
-            if (c == '"') { inString = !inString; continue; }
-            if (inString) continue;
-            if (c == '{') depth++;
-            else if (c == '}') {
-                depth--;
-                if (depth == 0) { braceEnd = i + 1; break; }
-            }
-        }
-
-        if (braceEnd < 0) return json; // Unbalanced braces
-
-        // Find the full range to remove: including the "breaks" key, leading/trailing comma
-        int removeStart = keyMatcher.start();
-        int removeEnd = braceEnd;
-
-        // Consume leading comma + whitespace
-        int searchBack = removeStart - 1;
-        while (searchBack >= 0 && Character.isWhitespace(json.charAt(searchBack))) searchBack--;
-        if (searchBack >= 0 && json.charAt(searchBack) == ',') {
-            removeStart = searchBack;
-        } else {
-            // No leading comma — consume trailing comma instead
-            int searchForward = removeEnd;
-            while (searchForward < json.length() && Character.isWhitespace(json.charAt(searchForward))) searchForward++;
-            if (searchForward < json.length() && json.charAt(searchForward) == ',') {
-                removeEnd = searchForward + 1;
-            }
-        }
-
-        String updated = json.substring(0, removeStart) + json.substring(removeEnd);
-        LOGGER.info("  Removed 'breaks' section from fabric.mod.json (no longer valid after transformation)");
-        return updated;
-    }
-
-    /**
-     * Remove an arbitrary JSON object section by key name using balanced-brace matching.
-     * Handles leading/trailing comma cleanup. Returns json unchanged if key not found.
-     */
-    private String removeJsonSection(String json, String sectionKey) {
-        Pattern keyPattern = DYNAMIC_PATTERN_CACHE.computeIfAbsent(
-            "block:" + sectionKey,
-            k -> Pattern.compile("\"" + Pattern.quote(sectionKey) + "\"\\s*:\\s*\\{")
-        );
-        Matcher keyMatcher = keyPattern.matcher(json);
-        if (!keyMatcher.find()) return json;
-
-        int braceStart = keyMatcher.end() - 1;
-        int depth = 0;
-        boolean inString = false;
-        boolean escape = false;
-        int braceEnd = -1;
-
-        for (int i = braceStart; i < json.length(); i++) {
-            char c = json.charAt(i);
-            if (escape) { escape = false; continue; }
-            if (c == '\\' && inString) { escape = true; continue; }
-            if (c == '"') { inString = !inString; continue; }
-            if (inString) continue;
-            if (c == '{') depth++;
-            else if (c == '}') {
-                depth--;
-                if (depth == 0) { braceEnd = i + 1; break; }
-            }
-        }
-        if (braceEnd < 0) return json;
-
-        int removeStart = keyMatcher.start();
-        int removeEnd = braceEnd;
-
-        // Consume leading comma + whitespace
-        int searchBack = removeStart - 1;
-        while (searchBack >= 0 && Character.isWhitespace(json.charAt(searchBack))) searchBack--;
-        if (searchBack >= 0 && json.charAt(searchBack) == ',') {
-            removeStart = searchBack;
-        } else {
-            int searchForward = removeEnd;
-            while (searchForward < json.length() && Character.isWhitespace(json.charAt(searchForward))) searchForward++;
-            if (searchForward < json.length() && json.charAt(searchForward) == ',') {
-                removeEnd = searchForward + 1;
-            }
-        }
-
-        LOGGER.info("  Removed '{}' section from fabric.mod.json", sectionKey);
-        return json.substring(0, removeStart) + json.substring(removeEnd);
     }
 
     /**
@@ -1001,25 +674,25 @@ public class FabricModTransformer {
      *   "trinkets": ">=3.4.0 <3.5.0"       →  "trinkets": "*"
      */
     private String relaxShimmedApiDependencies(String json) {
-        // Only modify inside the "depends" block
-        String dependsContent = extractJsonBlock(json, "depends");
-        if (dependsContent == null) return json;
-
-        String updatedDepends = dependsContent;
+        String updated = json;
         int relaxedCount = 0;
 
         for (String modId : SHIMMED_API_MOD_IDS) {
-            Pattern apiPattern = DYNAMIC_PATTERN_CACHE.computeIfAbsent(
-                "api:" + modId,
-                k -> Pattern.compile("(\"" + Pattern.quote(modId) + "\"\\s*:\\s*)\"[^\"]+\"", Pattern.MULTILINE)
+            // Match "mod-id": "any version constraint"
+            // Uses negative lookbehind to avoid matching inside other strings
+            Pattern apiPattern = Pattern.compile(
+                "(\"" + Pattern.quote(modId) + "\"\\s*:\\s*)\"[^\"]+\"",
+                Pattern.MULTILINE
             );
 
-            Matcher matcher = apiPattern.matcher(updatedDepends);
+            Matcher matcher = apiPattern.matcher(updated);
             if (matcher.find()) {
+                String originalConstraint = matcher.group(0);
                 String relaxed = matcher.replaceAll("$1\"*\"");
-                if (!relaxed.equals(updatedDepends)) {
+
+                if (!relaxed.equals(updated)) {
                     LOGGER.info("  Relaxed API dependency: {} → \"*\" (RetroMod has shims)", modId);
-                    updatedDepends = relaxed;
+                    updated = relaxed;
                     relaxedCount++;
                 }
             }
@@ -1027,15 +700,9 @@ public class FabricModTransformer {
 
         if (relaxedCount > 0) {
             LOGGER.info("Relaxed {} third-party API version constraint(s)", relaxedCount);
-            int contentStart = json.indexOf(dependsContent);
-            if (contentStart >= 0) {
-                return json.substring(0, contentStart)
-                     + updatedDepends
-                     + json.substring(contentStart + dependsContent.length());
-            }
         }
 
-        return json;
+        return updated;
     }
 
     /**
@@ -1055,21 +722,23 @@ public class FabricModTransformer {
      * and we've already pinned minecraft/fabricloader/fabric-api correctly.
      */
     private String moveBlockingDepsToSuggests(String json) {
-        // Only modify inside the "depends" block
-        String dependsContent = extractJsonBlock(json, "depends");
-        if (dependsContent == null) return json;
-
+        // Find dependencies with upper-bounded version ranges that aren't
+        // minecraft, fabricloader, fabric-api, fabric, or java
+        // These are likely API version pins that would block loading
         Set<String> keepStrict = Set.of(
             "minecraft", "fabricloader", "fabric-api", "fabric", "java"
         );
 
-        // Match "modid": "version" pairs with upper-bound constraints (contains '<')
+        String updated = json;
+
+        // Match any "modid": "version" pairs that have upper-bound constraints
+        // like "<X.Y.Z" or version ranges that would block newer versions
         Pattern depPattern = Pattern.compile(
             "\"([a-z0-9_-]+)\"\\s*:\\s*\"([^\"]*<[^\"]+)\"",
             Pattern.MULTILINE
         );
 
-        Matcher matcher = depPattern.matcher(dependsContent);
+        Matcher matcher = depPattern.matcher(updated);
         StringBuffer sb = new StringBuffer();
 
         while (matcher.find()) {
@@ -1077,23 +746,14 @@ public class FabricModTransformer {
             String constraint = matcher.group(2);
 
             if (!keepStrict.contains(depId) && !SHIMMED_API_MOD_IDS.contains(depId)) {
+                // This is an unknown API with an upper-bounded version — relax it
                 LOGGER.info("  Relaxed unknown API dependency: {} (was: {})", depId, constraint);
                 matcher.appendReplacement(sb, "\"" + depId + "\": \"*\"");
             }
         }
         matcher.appendTail(sb);
 
-        String updatedDepends = sb.toString();
-        if (!updatedDepends.equals(dependsContent)) {
-            int contentStart = json.indexOf(dependsContent);
-            if (contentStart >= 0) {
-                return json.substring(0, contentStart)
-                     + updatedDepends
-                     + json.substring(contentStart + dependsContent.length());
-            }
-        }
-
-        return json;
+        return sb.toString();
     }
     
     /**
@@ -1116,102 +776,35 @@ public class FabricModTransformer {
         // Add RetroMod info to manifest
         manifest.getMainAttributes().putValue("RetroMod-Transformed", "true");
         manifest.getMainAttributes().putValue("RetroMod-Target-Version", targetMcVersion);
-        manifest.getMainAttributes().putValue("RetroMod-MixinProcessed", "true");
         
-        // Build class data lookup ONCE for all mixin config processing
-        Map<String, byte[]> classLookup = buildClassLookup(sourceDir);
-        MixinCompatibilityTransformer mixinTransformer =
-            new MixinCompatibilityTransformer(RetroModTransformer.getInstance());
-
-        // First pass: process all mixin configs and collect modified class data
-        // transformMixinConfig() may partial-strip classes, storing modified bytes in classLookup
-        try (var configStream = Files.walk(sourceDir)) {
-            for (Path file : configStream.filter(Files::isRegularFile).toList()) {
-                String entryName = sourceDir.relativize(file).toString()
-                    .replace(File.separator, "/");
-                if (isMixinConfigFile(entryName)) {
-                    try {
-                        String json = Files.readString(file);
-                        mixinTransformer.transformMixinConfig(json, classLookup);
-                    } catch (Exception e) {
-                        LOGGER.warn("Pre-pass mixin config processing failed for {}: {}", entryName, e.getMessage());
-                    }
-                }
-            }
-        }
-
-        // Second pass: write the final JAR with all modifications applied
         try (JarOutputStream jos = new JarOutputStream(
                 new FileOutputStream(outputJar.toFile()), manifest)) {
-
+            
             try (var stream = Files.walk(sourceDir)) {
                 for (Path file : stream.filter(Files::isRegularFile).toList()) {
                     String entryName = sourceDir.relativize(file).toString()
                         .replace(File.separator, "/");
-
+                    
                     // Skip manifest (we added our own)
                     if (entryName.equalsIgnoreCase("META-INF/MANIFEST.MF")) {
                         continue;
                     }
-
-                    // Strip jar signing files — we modify contents so signatures are invalid
-                    // Covers: .SF, .RSA, .DSA, .EC, and SIG-* files per JAR spec
-                    String metaFileName = entryName.contains("/") ?
-                        entryName.substring(entryName.lastIndexOf('/') + 1) : entryName;
-                    if (entryName.startsWith("META-INF/") && (
-                            entryName.endsWith(".SF") || entryName.endsWith(".RSA") ||
-                            entryName.endsWith(".DSA") || entryName.endsWith(".EC") ||
-                            metaFileName.startsWith("SIG-"))) {
-                        LOGGER.debug("Stripping signing file: {}", entryName);
-                        continue;
-                    }
-
+                    
                     JarEntry entry = new JarEntry(entryName);
                     jos.putNextEntry(entry);
 
-                    if (isMixinConfigFile(entryName)) {
-                        // Write mixin config with safety modifications
+                    // Process mixin config JSON files to strip broken entries
+                    if (entryName.endsWith(".mixins.json") || entryName.endsWith("mixin.json")) {
                         try {
                             String json = Files.readString(file);
+                            // Build a class data lookup from the source directory
+                            Map<String, byte[]> classLookup = buildClassLookup(sourceDir);
+                            MixinCompatibilityTransformer mixinTransformer =
+                                new MixinCompatibilityTransformer(RetroModTransformer.getInstance());
                             String transformed = mixinTransformer.transformMixinConfig(json, classLookup);
-                            // Set "required": false so broken mixin configs don't crash the game
-                            transformed = transformed.replaceAll(
-                                "\"required\"\\s*:\\s*true",
-                                "\"required\": false"
-                            );
-                            // Ensure "defaultRequire": 0 in injectors section
-                            if (transformed.contains("\"defaultRequire\"")) {
-                                transformed = transformed.replaceAll(
-                                    "\"defaultRequire\"\\s*:\\s*[1-9]\\d*",
-                                    "\"defaultRequire\": 0"
-                                );
-                            } else if (transformed.contains("\"injectors\"")) {
-                                transformed = transformed.replaceFirst(
-                                    "(\"injectors\"\\s*:\\s*\\{)",
-                                    "$1\n    \"defaultRequire\": 0,"
-                                );
-                            } else {
-                                int lastBrace = transformed.lastIndexOf('}');
-                                if (lastBrace > 0) {
-                                    transformed = transformed.substring(0, lastBrace)
-                                        + ",\n  \"injectors\": {\n    \"defaultRequire\": 0\n  }\n}";
-                                }
-                            }
                             jos.write(transformed.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                         } catch (Exception e) {
                             LOGGER.warn("Failed to process mixin config {}: {}", entryName, e.getMessage());
-                            Files.copy(file, jos);
-                        }
-                    } else if (entryName.endsWith(".class") && classLookup.containsKey(entryName)) {
-                        // Write class data from lookup — may have been modified by partial stripping
-                        jos.write(classLookup.get(entryName));
-                    } else if (entryName.startsWith("META-INF/jars/") && entryName.endsWith(".jar")) {
-                        // Patch nested Jar-in-Jar dependencies
-                        try {
-                            byte[] patchedJar = patchNestedJar(Files.readAllBytes(file));
-                            jos.write(patchedJar);
-                        } catch (Exception e) {
-                            LOGGER.warn("Failed to patch nested jar {}: {}", entryName, e.getMessage());
                             Files.copy(file, jos);
                         }
                     } else {
@@ -1222,83 +815,6 @@ public class FabricModTransformer {
                 }
             }
         }
-    }
-
-    /**
-     * Patch a nested Jar-in-Jar: update its fabric.mod.json to accept the target MC version.
-     * Returns the patched jar bytes.
-     */
-
-    /**
-     * Check if a file is a mixin config JSON based on naming conventions.
-     *
-     * Mixin config files use various naming patterns:
-     *   - modid.mixins.json           (most common)
-     *   - mixins.modid.json           (Iris, some others)
-     *   - modid-common.mixins.json    (multi-platform mods)
-     *   - modid_mixin.json            (some older mods)
-     *   - modid.mixin.json            (alternate convention)
-     *
-     * Also checks if a file is referenced in fabric.mod.json "mixins" array.
-     * We use a broad pattern to catch ALL variants.
-     */
-    /** Read all bytes from an InputStream and close it. Prevents resource leaks. */
-    private static byte[] readAndClose(InputStream is) throws IOException {
-        try (is) {
-            return is.readAllBytes();
-        }
-    }
-
-    private boolean isMixinConfigFile(String filename) {
-        // Only JSON files
-        if (!filename.endsWith(".json")) return false;
-        // Skip META-INF paths (except jars handled elsewhere) and deep nesting,
-        // but ALLOW mixin configs in subdirectories like "mixins/common/*.mixins.json"
-        if (filename.startsWith("META-INF/") && !filename.startsWith("META-INF/jars/")) return false;
-
-        String lower = filename.toLowerCase();
-
-        // Pattern 1: *.mixins.json (e.g., "dynamic_fps.mixins.json")
-        if (lower.endsWith(".mixins.json")) return true;
-
-        // Pattern 2: *mixin.json or *mixin*.json (e.g., "modid_mixin.json", "modid.mixin.json")
-        if (lower.endsWith(".mixin.json") || lower.endsWith("_mixin.json")) return true;
-
-        // Pattern 3: mixins.*.json (e.g., "mixins.iris.json", "mixins.iris.compat.sodium.json")
-        if (lower.startsWith("mixins.")) return true;
-
-        // Pattern 4: contains "mixin" in the name (e.g., "iris-batched-entity-rendering.mixins.json")
-        if (lower.contains("mixin") && lower.endsWith(".json")) return true;
-
-        return false;
-    }
-
-    private byte[] patchNestedJar(byte[] jarBytes) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-
-        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new ByteArrayInputStream(jarBytes));
-             java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(baos)) {
-
-            java.util.zip.ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
-                byte[] data = zis.readAllBytes();
-
-                // Patch fabric.mod.json inside the nested jar
-                if (entry.getName().equals("fabric.mod.json")) {
-                    String json = new String(data, java.nio.charset.StandardCharsets.UTF_8);
-                    String originalVersion = extractVersionFromContent(json);
-                    String patched = updateVersionRequirements(json, originalVersion);
-                    data = patched.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                    LOGGER.info("Patched nested jar fabric.mod.json: {} → {}", originalVersion, targetMcVersion);
-                }
-
-                zos.putNextEntry(new java.util.zip.ZipEntry(entry.getName()));
-                zos.write(data);
-                zos.closeEntry();
-            }
-        }
-
-        return baos.toByteArray();
     }
     
     /**
@@ -1352,7 +868,7 @@ public class FabricModTransformer {
             // Check fabric.mod.json
             ZipEntry entry = jar.getEntry("fabric.mod.json");
             if (entry != null) {
-                String content = new String(readAndClose(jar.getInputStream(entry)));
+                String content = new String(jar.getInputStream(entry).readAllBytes());
                 return content.contains("\"retromod_transformed\"");
             }
             

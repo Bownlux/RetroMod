@@ -55,24 +55,14 @@ public class HybridCompiler {
      * Compile a class using hybrid AOT/JIT approach.
      * Returns the transformed bytecode with JIT markers where needed.
      */
-    // Cached redirect map references (set once per compileClass call, avoids repeated getter calls)
-    private Map<RetroModTransformer.MethodKey, RetroModTransformer.MethodTarget> cachedMethodRedirects;
-    private Map<String, String> cachedClassRedirects;
-    private Map<RetroModTransformer.FieldKey, RetroModTransformer.FieldTarget> cachedFieldRedirects;
-
     public HybridCompilationResult compileClass(byte[] classBytes, String className) {
         ClassReader reader = new ClassReader(classBytes);
         ClassNode classNode = new ClassNode();
         reader.accept(classNode, ClassReader.EXPAND_FRAMES);
-
-        // Cache redirect maps once per class (avoids thousands of getter calls per class)
-        cachedMethodRedirects = transformer.getMethodRedirects();
-        cachedClassRedirects = transformer.getClassRedirects();
-        cachedFieldRedirects = transformer.getFieldRedirects();
-
+        
         List<MethodAnalysis> methodAnalyses = new ArrayList<>();
         boolean classModified = false;
-
+        
         // Analyze and transform each method
         for (MethodNode method : classNode.methods) {
             MethodAnalysis analysis = analyzeMethod(classNode.name, method);
@@ -311,27 +301,22 @@ public class HybridCompiler {
      */
     private boolean needsMethodRedirect(MethodInsnNode insn) {
         var key = new RetroModTransformer.MethodKey(insn.owner, insn.name, insn.desc);
-        return cachedMethodRedirects.containsKey(key);
+        return transformer.getMethodRedirects().containsKey(key);
     }
-
+    
     /**
      * Check if a field access needs to be redirected.
      */
     private boolean needsFieldRedirect(FieldInsnNode insn) {
-        // Check actual field redirects first
-        var fieldKey = new RetroModTransformer.FieldKey(insn.owner, insn.name);
-        if (cachedFieldRedirects.containsKey(fieldKey)) {
-            return true;
-        }
         // Check if the owner class is being redirected
-        return cachedClassRedirects.containsKey(insn.owner);
+        return transformer.getClassRedirects().containsKey(insn.owner);
     }
-
+    
     /**
      * Check if a class reference needs to be redirected.
      */
     private boolean needsClassRedirect(String className) {
-        return cachedClassRedirects.containsKey(className);
+        return transformer.getClassRedirects().containsKey(className);
     }
     
     /**
@@ -339,40 +324,31 @@ public class HybridCompiler {
      */
     private boolean transformMethodAot(MethodNode method) {
         boolean modified = false;
-
-        ListIterator<AbstractInsnNode> iter = method.instructions.iterator();
-        while (iter.hasNext()) {
-            AbstractInsnNode insn = iter.next();
+        
+        for (AbstractInsnNode insn : method.instructions) {
             switch (insn.getType()) {
                 case AbstractInsnNode.METHOD_INSN -> {
                     MethodInsnNode methodInsn = (MethodInsnNode) insn;
-                    // Use node-replacement to handle opcode changes (instance→static)
-                    MethodInsnNode replacement = transformMethodInsnNode(methodInsn);
-                    if (replacement != null) {
-                        method.instructions.set(insn, replacement);
-                        modified = true;
-                    } else if (transformMethodInsn(methodInsn)) {
-                        modified = true;
-                    }
+                    modified |= transformMethodInsn(methodInsn);
                 }
-
+                
                 case AbstractInsnNode.FIELD_INSN -> {
                     FieldInsnNode fieldInsn = (FieldInsnNode) insn;
                     modified |= transformFieldInsn(fieldInsn);
                 }
-
+                
                 case AbstractInsnNode.TYPE_INSN -> {
                     TypeInsnNode typeInsn = (TypeInsnNode) insn;
                     modified |= transformTypeInsn(typeInsn);
                 }
-
+                
                 case AbstractInsnNode.LDC_INSN -> {
                     LdcInsnNode ldcInsn = (LdcInsnNode) insn;
                     modified |= transformLdcInsn(ldcInsn);
                 }
             }
         }
-
+        
         return modified;
     }
     
@@ -443,74 +419,28 @@ public class HybridCompiler {
         method.visibleAnnotations.add(jitAnnotation);
     }
     
-    /**
-     * Transform a method instruction, returning a replacement node if the opcode
-     * needs to change (instance→static), or null if in-place mutation sufficed.
-     */
-    private MethodInsnNode transformMethodInsnNode(MethodInsnNode insn) {
-        var key = new RetroModTransformer.MethodKey(insn.owner, insn.name, insn.desc);
-        var target = transformer.getMethodRedirects().get(key);
-
-        if (target != null) {
-            // Check if opcode needs to change (instance→static redirect)
-            int newOpcode = insn.getOpcode();
-            boolean newItf = insn.itf;
-            if ((insn.getOpcode() == Opcodes.INVOKEVIRTUAL || insn.getOpcode() == Opcodes.INVOKEINTERFACE)
-                    && target.isInstanceToStatic(insn.desc)) {
-                newOpcode = Opcodes.INVOKESTATIC;
-                newItf = false;
-            }
-
-            // Must return a new node since AbstractInsnNode.opcode is immutable
-            return new MethodInsnNode(newOpcode, target.owner(), target.name(), target.desc(), newItf);
-        }
-
-        // Check class redirect
-        String newOwner = transformer.getClassRedirects().get(insn.owner);
-        if (newOwner != null) {
-            insn.owner = newOwner;
-            // Return null = in-place mutation was sufficient
-            return null;
-        }
-
-        return null;
-    }
-
     private boolean transformMethodInsn(MethodInsnNode insn) {
-        // Delegate to the node-returning version for cases that don't need opcode change
         var key = new RetroModTransformer.MethodKey(insn.owner, insn.name, insn.desc);
         var target = transformer.getMethodRedirects().get(key);
-
+        
         if (target != null) {
             insn.owner = target.owner();
             insn.name = target.name();
             insn.desc = target.desc();
             return true;
         }
-
+        
+        // Check class redirect
         String newOwner = transformer.getClassRedirects().get(insn.owner);
         if (newOwner != null) {
             insn.owner = newOwner;
             return true;
         }
-
+        
         return false;
     }
-
+    
     private boolean transformFieldInsn(FieldInsnNode insn) {
-        // Check field redirects first (more specific)
-        var fieldKey = new RetroModTransformer.FieldKey(insn.owner, insn.name);
-        var fieldTarget = transformer.getFieldRedirects().get(fieldKey);
-        if (fieldTarget != null) {
-            insn.owner = fieldTarget.owner();
-            insn.name = fieldTarget.name();
-            if (fieldTarget.newDesc() != null && !fieldTarget.newDesc().startsWith("(")) {
-                insn.desc = fieldTarget.newDesc();
-            }
-            return true;
-        }
-
-        // Fall back to class redirect on owner
         String newOwner = transformer.getClassRedirects().get(insn.owner);
         if (newOwner != null) {
             insn.owner = newOwner;

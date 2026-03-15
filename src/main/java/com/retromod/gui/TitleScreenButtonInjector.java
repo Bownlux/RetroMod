@@ -89,29 +89,25 @@ public final class TitleScreenButtonInjector {
             // TitleScreen
             titleScreenClass = McReflect.findClass(
                 "net.minecraft.client.gui.screen.TitleScreen",   // yarn
-                "net.minecraft.client.gui.screens.TitleScreen",  // mojang
-                "net.minecraft.class_442"                        // intermediary (Fabric prod)
+                "net.minecraft.client.gui.screens.TitleScreen"   // mojang
             );
 
             // Screen (parent class)
             screenClass = McReflect.findClass(
                 "net.minecraft.client.gui.screen.Screen",   // yarn
-                "net.minecraft.client.gui.screens.Screen",  // mojang
-                "net.minecraft.class_437"                    // intermediary
+                "net.minecraft.client.gui.screens.Screen"   // mojang
             );
 
             // Text / Component (for button label)
             textClass = McReflect.findClass(
                 "net.minecraft.text.Text",                    // yarn
-                "net.minecraft.network.chat.Component",       // mojang
-                "net.minecraft.class_2561"                    // intermediary
+                "net.minecraft.network.chat.Component"        // mojang
             );
 
             // ButtonWidget / Button
             buttonWidgetClass = McReflect.findClass(
                 "net.minecraft.client.gui.widget.ButtonWidget",  // yarn
-                "net.minecraft.client.gui.components.Button",    // mojang
-                "net.minecraft.class_4185"                       // intermediary
+                "net.minecraft.client.gui.components.Button"     // mojang
             );
 
             return titleScreenClass != null && screenClass != null
@@ -322,33 +318,9 @@ public final class TitleScreenButtonInjector {
      */
     private static void addRetroModButton(Object screen) {
         try {
-            // Show any pending in-game notifications (from PreLaunch)
-            // showPending() handles MC main-thread scheduling internally
-            if (InGameNotificationManager.hasPending()) {
-                InGameNotificationManager.showPending();
-            }
-
             // Get screen dimensions
             int width = McReflect.getIntField(screen, screenClass, 854, "width");
             int height = McReflect.getIntField(screen, screenClass, 480, "height");
-
-            // Intermediary fallback: if named fields not found, search int fields
-            if (width == 854 && height == 480) {
-                // Screen has width/height as protected int fields — try to find them
-                java.lang.reflect.Field[] intFields = findIntFields(screenClass);
-                if (intFields.length >= 2) {
-                    try {
-                        intFields[0].setAccessible(true);
-                        intFields[1].setAccessible(true);
-                        int w = intFields[0].getInt(screen);
-                        int h = intFields[1].getInt(screen);
-                        if (w > 0 && h > 0) {
-                            width = w;
-                            height = h;
-                        }
-                    } catch (Exception ignored) {}
-                }
-            }
 
             // Position: above the language selector (bottom-left)
             int buttonX = width / 2 - 124;
@@ -398,22 +370,11 @@ public final class TitleScreenButtonInjector {
                 new Class[]{int.class, int.class, int.class, int.class},
                 "dimensions", "bounds", "pos");
             if (dimensionsMethod != null) {
-                builder = dimensionsMethod.invoke(builder, buttonX, buttonY, 80, 20);
+                builder = dimensionsMethod.invoke(builder, buttonX, buttonY, 20, 20);
             }
 
-            // .build() — search by name first, then by return type (returns ButtonWidget)
+            // .build()
             Method buildMethod = McReflect.findMethod(builder.getClass(), "build");
-            if (buildMethod == null) {
-                // Intermediary fallback: find no-arg method returning ButtonWidget
-                for (Method m : builder.getClass().getDeclaredMethods()) {
-                    if (m.getParameterCount() == 0
-                        && buttonWidgetClass.isAssignableFrom(m.getReturnType())) {
-                        buildMethod = m;
-                        buildMethod.setAccessible(true);
-                        break;
-                    }
-                }
-            }
             if (buildMethod == null) {
                 LOGGER.debug("Could not find builder.build() method");
                 return;
@@ -425,10 +386,6 @@ public final class TitleScreenButtonInjector {
             // mojang: screen.addRenderableWidget(widget)
             Method addMethod = McReflect.findMethod(screenClass,
                 "addDrawableChild", "addRenderableWidget", "addWidget");
-            if (addMethod == null) {
-                // Intermediary fallback: search for a method that accepts the button's type
-                addMethod = findAddWidgetMethod(screenClass, button.getClass());
-            }
             if (addMethod != null) {
                 addMethod.setAccessible(true);
                 addMethod.invoke(screen, button);
@@ -448,25 +405,12 @@ public final class TitleScreenButtonInjector {
     private static void openRetroModManager(Object screen) {
         try {
             // Get MinecraftClient/Minecraft instance from the screen
-            // In intermediary, the field name is obfuscated — fall back to type-based search
             Object client = McReflect.getField(screen, screenClass, "client", "minecraft");
-            if (client == null) {
-                // Search for a field whose type is MinecraftClient
-                Class<?> mcClass = McReflect.findClass(
-                    "net.minecraft.client.MinecraftClient",
-                    "net.minecraft.client.Minecraft",
-                    "net.minecraft.class_310"
-                );
-                if (mcClass != null) {
-                    client = McReflect.getFieldByType(screen, screenClass, mcClass);
-                }
-            }
             if (client == null) {
                 // Fallback: try static getInstance()
                 Class<?> mcClass = McReflect.findClass(
                     "net.minecraft.client.MinecraftClient",  // yarn
-                    "net.minecraft.client.Minecraft",        // mojang
-                    "net.minecraft.class_310"                // intermediary
+                    "net.minecraft.client.Minecraft"         // mojang
                 );
                 if (mcClass != null) {
                     Method getInstance = McReflect.findMethod(mcClass, "getInstance");
@@ -498,7 +442,7 @@ public final class TitleScreenButtonInjector {
      * Find the PressAction / OnPress inner class of ButtonWidget / Button.
      */
     private static Class<?> findPressActionClass() {
-        // Try yarn / mojang names (inner class fallback below handles intermediary)
+        // Try yarn name
         Class<?> c = McReflect.findClass(
             "net.minecraft.client.gui.widget.ButtonWidget$PressAction",  // yarn
             "net.minecraft.client.gui.components.Button$OnPress"         // mojang
@@ -511,38 +455,6 @@ public final class TitleScreenButtonInjector {
                 if (inner.isInterface() && inner.getDeclaredMethods().length == 1) {
                     // Single abstract method interface — likely the press action
                     return inner;
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Find protected/public int fields on a class (for width/height fallback).
-     */
-    private static java.lang.reflect.Field[] findIntFields(Class<?> clazz) {
-        java.util.List<java.lang.reflect.Field> fields = new java.util.ArrayList<>();
-        for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-            if (f.getType() == int.class
-                && !java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
-                fields.add(f);
-            }
-        }
-        return fields.toArray(new java.lang.reflect.Field[0]);
-    }
-
-    /**
-     * Find the addDrawableChild/addRenderableWidget method by searching for methods
-     * that accept the button's superclass hierarchy. Handles obfuscated method names.
-     */
-    private static Method findAddWidgetMethod(Class<?> screenClass, Class<?> buttonClass) {
-        // Walk up the button's class hierarchy to find a method that accepts it
-        for (Class<?> type = buttonClass; type != null && type != Object.class; type = type.getSuperclass()) {
-            for (Method m : screenClass.getDeclaredMethods()) {
-                if (m.getParameterCount() == 1 && m.getParameterTypes()[0].isAssignableFrom(buttonClass)
-                    && m.getReturnType().isAssignableFrom(buttonClass)) {
-                    // Method takes a widget type and returns it — this is addDrawableChild pattern
-                    return m;
                 }
             }
         }

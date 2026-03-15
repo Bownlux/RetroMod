@@ -45,7 +45,6 @@ import java.util.regex.*;
 public class ResourcePackTransformer {
     
     private static final Logger LOGGER = LoggerFactory.getLogger("RetroMod-Resources");
-    private static final Pattern PAT_PACK_FORMAT = Pattern.compile("\"pack_format\"\\s*:\\s*(\\d+)");
     
     // Pack format for target MC versions
     private static final Map<String, Integer> PACK_FORMATS = new HashMap<>();
@@ -119,7 +118,8 @@ public class ResourcePackTransformer {
         try {
             String mcmeta = readPackMcmeta(packPath);
             if (mcmeta != null) {
-                Matcher m = PAT_PACK_FORMAT.matcher(mcmeta);
+                Pattern p = Pattern.compile("\"pack_format\"\\s*:\\s*(\\d+)");
+                Matcher m = p.matcher(mcmeta);
                 if (m.find()) {
                     return Integer.parseInt(m.group(1));
                 }

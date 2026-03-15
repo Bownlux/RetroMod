@@ -138,7 +138,7 @@ public final class McReflect {
             }
         }
 
-        // Search by name only (first match, ignoring parameter types)
+        // Last resort: search by name only (first match, ignoring parameter types)
         for (String name : names) {
             if (name == null) continue;
             for (Method m : clazz.getDeclaredMethods()) {
@@ -154,75 +154,14 @@ public final class McReflect {
             }
         }
 
-        // Last resort: if paramTypes were specified, search by exact signature only
-        // This handles obfuscated method names (e.g. intermediary on Fabric)
-        if (paramTypes != null) {
-            // Try declared methods first
-            for (Method m : clazz.getDeclaredMethods()) {
-                Class<?>[] mParams = m.getParameterTypes();
-                if (mParams.length == paramTypes.length) {
-                    boolean match = true;
-                    for (int i = 0; i < mParams.length; i++) {
-                        if (!mParams[i].equals(paramTypes[i])) {
-                            match = false;
-                            break;
-                        }
-                    }
-                    if (match) {
-                        m.setAccessible(true);
-                        LOGGER.debug("Found method by signature: {}.{} (obfuscated name match)",
-                            clazz.getSimpleName(), m.getName());
-                        return m;
-                    }
-                }
-            }
-            // Try public methods (includes inherited)
-            for (Method m : clazz.getMethods()) {
-                Class<?>[] mParams = m.getParameterTypes();
-                if (mParams.length == paramTypes.length) {
-                    boolean match = true;
-                    for (int i = 0; i < mParams.length; i++) {
-                        if (!mParams[i].equals(paramTypes[i])) {
-                            match = false;
-                            break;
-                        }
-                    }
-                    if (match) {
-                        LOGGER.debug("Found method by signature: {}.{} (obfuscated name match)",
-                            clazz.getSimpleName(), m.getName());
-                        return m;
-                    }
-                }
-            }
-        }
-
         return null;
     }
 
     /**
      * Find a no-arg method by trying multiple name variants.
-     * If name-based search fails, falls back to finding a static no-arg method
-     * returning an instance of the class (singleton/getter pattern).
      */
     public static Method findMethod(Class<?> clazz, String... names) {
-        Method m = findMethod(clazz, null, names);
-        if (m != null) return m;
-
-        // Fallback for obfuscated environments: find static no-arg method returning
-        // the class type itself (handles getInstance() / getDefault() patterns)
-        if (clazz != null) {
-            for (Method method : clazz.getDeclaredMethods()) {
-                if (java.lang.reflect.Modifier.isStatic(method.getModifiers())
-                    && method.getParameterCount() == 0
-                    && clazz.isAssignableFrom(method.getReturnType())) {
-                    method.setAccessible(true);
-                    LOGGER.debug("Found static self-getter by return type: {}.{} (obfuscated name match)",
-                        clazz.getSimpleName(), method.getName());
-                    return method;
-                }
-            }
-        }
-        return null;
+        return findMethod(clazz, null, names);
     }
 
     // =====================================================================
@@ -293,40 +232,6 @@ public final class McReflect {
         return null;
     }
 
-    /**
-     * Get a field value by searching for a field of the given type.
-     * Useful when field names are obfuscated (e.g. intermediary on Fabric).
-     *
-     * @param obj        the object instance
-     * @param clazz      the class to search
-     * @param fieldType  the expected field type
-     * @return the field value, or null if not found
-     */
-    public static Object getFieldByType(Object obj, Class<?> clazz, Class<?> fieldType) {
-        if (clazz == null || fieldType == null) return null;
-
-        // Search declared fields (including private/protected)
-        for (Field f : clazz.getDeclaredFields()) {
-            if (fieldType.isAssignableFrom(f.getType())
-                && !java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
-                try {
-                    f.setAccessible(true);
-                    return f.get(obj);
-                } catch (Exception e) {
-                    LOGGER.debug("Could not read field by type: {}", e.getMessage());
-                }
-            }
-        }
-
-        // Also check superclass
-        Class<?> superClass = clazz.getSuperclass();
-        if (superClass != null && superClass != Object.class) {
-            return getFieldByType(obj, superClass, fieldType);
-        }
-
-        return null;
-    }
-
     // =====================================================================
     // Loader Detection
     // =====================================================================
@@ -371,32 +276,19 @@ public final class McReflect {
     /**
      * Try to resolve a yarn class name to the runtime name using Fabric's MappingResolver.
      * Returns null if not on Fabric or if mapping fails.
-     *
-     * On production Fabric, the runtime uses intermediary names (e.g. net.minecraft.class_442).
-     * The MappingResolver can map from "named" (yarn) → intermediary, but ONLY if yarn
-     * mappings are loaded (typically only in dev). We try "named" first, then fall back
-     * to other available namespaces.
      */
     private static Class<?> findClassViaMappingResolver(String yarnName) {
         initResolver();
         if (mapClassNameMethod == null || mappingResolver == null) return null;
 
-        // Try mapping from "named" namespace (works in dev environments with yarn)
         try {
             String mapped = (String) mapClassNameMethod.invoke(mappingResolver, "named", yarnName);
             if (mapped != null && !mapped.equals(yarnName)) {
-                try {
-                    Class<?> c = Class.forName(mapped);
-                    LOGGER.debug("Resolved {} -> {} via MappingResolver (named)", yarnName, mapped);
-                    return c;
-                } catch (ClassNotFoundException e) {
-                    LOGGER.debug("MappingResolver returned {} but class not found", mapped);
-                }
+                return Class.forName(mapped);
             }
         } catch (Exception e) {
-            LOGGER.debug("MappingResolver 'named' lookup failed for {}: {}", yarnName, e.getMessage());
+            LOGGER.debug("MappingResolver lookup failed for {}: {}", yarnName, e.getMessage());
         }
-
         return null;
     }
 

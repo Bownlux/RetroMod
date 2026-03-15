@@ -7,6 +7,9 @@ package com.retromod.compat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.*;
+import java.awt.*;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
@@ -126,22 +129,83 @@ public class OptiFineCompat {
     }
     
     /**
-     * Queue in-game warning about OptiFine.
+     * Show GUI warning about OptiFine.
      */
     private static void showOptiFineWarningDialog() {
-        String message =
-            "RetroMod has LIMITED support for OptiFine.\n\n" +
-            "KNOWN ISSUES:\n" +
-            "- May crash with other rendering mods\n" +
-            "- Shader support may not work correctly\n" +
-            "- Performance may actually be worse\n\n" +
-            "RECOMMENDED ALTERNATIVES:\n" +
-            "- Sodium (better FPS): modrinth.com/mod/sodium\n" +
-            "- Iris (shaders): modrinth.com/mod/iris\n" +
-            "- Both work great with RetroMod!";
-
-        com.retromod.gui.InGameNotificationManager.queue(
-            "RetroMod - OptiFine Warning", message);
+        SwingUtilities.invokeLater(() -> {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+            
+            String message = """
+                ⚠️ OptiFine Detected!
+                
+                RetroMod has LIMITED support for OptiFine.
+                
+                KNOWN ISSUES:
+                • May crash with other rendering mods
+                • Shader support may not work correctly
+                • Performance may actually be worse
+                • Some features may be completely broken
+                
+                ═══════════════════════════════════════
+                
+                RECOMMENDED ALTERNATIVES:
+                
+                • Sodium - Much better FPS optimization
+                • Iris - Full shader support
+                • Both work perfectly with RetroMod!
+                
+                ═══════════════════════════════════════
+                
+                What would you like to do?
+                """;
+            
+            int choice = JOptionPane.showOptionDialog(
+                null,
+                message,
+                "RetroMod - OptiFine Warning",
+                JOptionPane.YES_NO_CANCEL_OPTION,
+                JOptionPane.WARNING_MESSAGE,
+                null,
+                new String[]{"Open Sodium Page", "Continue Anyway", "Cancel"},
+                "Open Sodium Page"
+            );
+            
+            if (choice == 0) {
+                // Open Sodium page
+                try {
+                    Desktop.getDesktop().browse(URI.create("https://modrinth.com/mod/sodium"));
+                } catch (Exception e) {
+                    JOptionPane.showMessageDialog(null, 
+                        "Please visit: https://modrinth.com/mod/sodium",
+                        "Open Browser",
+                        JOptionPane.INFORMATION_MESSAGE);
+                }
+            } else if (choice == 2) {
+                // Cancel - don't transform
+                throw new RuntimeException("User cancelled OptiFine installation");
+            }
+            // choice == 1: Continue anyway
+        });
+        
+        // Wait for dialog
+        try {
+            Thread.sleep(100);
+            while (true) {
+                // Check if dialog is still showing
+                Window[] windows = Window.getWindows();
+                boolean dialogOpen = false;
+                for (Window w : windows) {
+                    if (w.isVisible() && w instanceof JDialog) {
+                        dialogOpen = true;
+                        break;
+                    }
+                }
+                if (!dialogOpen) break;
+                Thread.sleep(100);
+            }
+        } catch (InterruptedException ignored) {}
     }
     
     /**

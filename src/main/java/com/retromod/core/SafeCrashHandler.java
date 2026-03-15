@@ -8,7 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.retromod.gui.InGameScreenFactory;
-import com.retromod.util.McReflect;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,7 +30,7 @@ public class SafeCrashHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger("RetroMod-SafeCrash");
     
     // Singleton
-    private static volatile SafeCrashHandler instance;
+    private static SafeCrashHandler instance;
     
     // Track which class caused an error -> which mod it belongs to
     private final Map<String, String> classToModMap;
@@ -42,9 +41,9 @@ public class SafeCrashHandler {
     // Flag to prevent multiple crash dialogs
     private final AtomicBoolean crashHandled = new AtomicBoolean(false);
     
-    // Reference to Minecraft server (for world saving) — volatile for cross-thread visibility
-    private volatile Object minecraftServer = null;
-    private volatile Object minecraftClient = null;
+    // Reference to Minecraft server (for world saving)
+    private Object minecraftServer = null;
+    private Object minecraftClient = null;
     
     // The previous default handler, so we can chain to it
     private final Thread.UncaughtExceptionHandler previousHandler;
@@ -274,12 +273,16 @@ public class SafeCrashHandler {
             return true;
         }
         
-        // Check if error occurred on a critical game thread
-        String threadName = Thread.currentThread().getName().toLowerCase();
-        if (threadName.contains("server thread") ||
-            threadName.contains("render thread") ||
-            threadName.contains("main")) {
-            return true;
+        // Check if it's during a critical game phase
+        String message = error.getMessage();
+        if (message != null) {
+            if (message.contains("tick") ||
+                message.contains("render") ||
+                message.contains("world") ||
+                message.contains("entity") ||
+                message.contains("block")) {
+                return true;
+            }
         }
         
         return false;
@@ -320,25 +323,18 @@ public class SafeCrashHandler {
         try {
             // Try to pause via Minecraft client
             if (minecraftClient != null) {
-                // Try: minecraft.pause() or minecraft.setScreen(null)
-                Method pauseMethod = McReflect.findMethod(minecraftClient.getClass(),
-                    "pause", "method_1592");
-                if (pauseMethod != null) {
+                // Try: minecraft.pause() or minecraft.setScreen(new PauseScreen())
+                try {
+                    Method pauseMethod = minecraftClient.getClass().getMethod("pause");
                     pauseMethod.invoke(minecraftClient);
                     LOGGER.info("Game paused via client");
-                } else {
-                    // Try setScreen(null) — use McReflect to find Screen class
-                    Class<?> screenCls = McReflect.findClass(
-                        "net.minecraft.client.gui.screen.Screen",
-                        "net.minecraft.client.gui.screens.Screen",
-                        "net.minecraft.class_437");
-                    if (screenCls != null) {
-                        Method setScreen = McReflect.findMethod(minecraftClient.getClass(),
-                            new Class[]{screenCls}, "setScreen");
-                        if (setScreen != null) {
-                            setScreen.invoke(minecraftClient, (Object) null);
-                            LOGGER.info("Game paused via setScreen(null)");
-                        }
+                } catch (NoSuchMethodException e) {
+                    // Try alternative
+                    try {
+                        Method setScreen = minecraftClient.getClass().getMethod("setScreen", Object.class);
+                        setScreen.invoke(minecraftClient, (Object) null);
+                    } catch (Exception e2) {
+                        LOGGER.debug("Could not pause via setScreen");
                     }
                 }
             }
@@ -346,12 +342,9 @@ public class SafeCrashHandler {
             // Also try to pause the server tick
             if (minecraftServer != null) {
                 try {
-                    Method halt = McReflect.findMethod(minecraftServer.getClass(),
-                        new Class[]{boolean.class}, "halt", "method_3795");
-                    if (halt != null) {
-                        halt.invoke(minecraftServer, false); // false = don't wait
-                        LOGGER.info("Server tick halted");
-                    }
+                    // Try to stop the server tick thread
+                    Method halt = minecraftServer.getClass().getMethod("halt", boolean.class);
+                    halt.invoke(minecraftServer, false); // false = don't wait
                 } catch (Exception e) {
                     LOGGER.debug("Could not halt server");
                 }
@@ -489,57 +482,27 @@ public class SafeCrashHandler {
     /**
      * Show crash dialog in-game (client only).
      * Uses InGameScreenFactory to render as a Minecraft screen instead of a Swing popup.
-     * Must schedule on MC's render thread since setScreen() is not thread-safe.
      */
     private void showGuiCrashDialog(String message) {
-        Runnable showScreen = () -> {
-            try {
-                InGameScreenFactory.showCrashScreen("Transformed Mod", message, () -> {
-                    LOGGER.info("User acknowledged crash - exiting Minecraft");
-                    System.exit(1);
-                });
-            } catch (Exception e) {
-                LOGGER.error("Could not show in-game crash screen: {}", e.getMessage());
-                LOGGER.error("Crash details:\n{}", message);
-                System.exit(1);
-            }
-        };
-
-        // Try to schedule on MC's main thread
         try {
-            Class<?> mcClass = McReflect.findClass(
-                "net.minecraft.client.MinecraftClient",
-                "net.minecraft.client.Minecraft",
-                "net.minecraft.class_310");
-            if (mcClass != null) {
-                Method getInstance = McReflect.findMethod(mcClass, "getInstance");
-                Object client = getInstance != null ? getInstance.invoke(null) : null;
-                if (client != null) {
-                    Method execute = McReflect.findMethod(mcClass,
-                        new Class[]{Runnable.class}, "execute", "tell");
-                    if (execute != null) {
-                        execute.invoke(client, showScreen);
-                        // Block this thread while screen is showing (max 60s)
-                        try {
-                            Thread.sleep(60000);
-                        } catch (InterruptedException ignored) {}
-                        System.exit(1);
-                        return;
-                    }
-                }
-            }
+            // Try in-game screen first
+            InGameScreenFactory.showCrashScreen("Transformed Mod", message, () -> {
+                LOGGER.info("User acknowledged crash - exiting Minecraft");
+                System.exit(1);
+            });
         } catch (Exception e) {
-            LOGGER.debug("Could not schedule crash screen on main thread: {}", e.getMessage());
+            // Fallback: just log and exit if in-game screen fails
+            LOGGER.error("Could not show in-game crash screen: {}", e.getMessage());
+            LOGGER.error("Crash details:\n{}", message);
+            System.exit(1);
         }
 
-        // Fallback: try directly (might already be on render thread)
-        showScreen.run();
-
-        // Block briefly in case screen is showing
+        // Block this thread briefly while screen is showing
         try {
-            Thread.sleep(30000);
-        } catch (InterruptedException ignored) {}
-        System.exit(1);
+            Thread.sleep(30000); // 30 seconds max — user should click Save & Quit
+        } catch (InterruptedException ignored) {
+            System.exit(1);
+        }
     }
     
     /**

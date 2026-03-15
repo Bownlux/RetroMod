@@ -7,9 +7,8 @@ package com.retromod.core;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.retromod.gui.InGameNotificationManager;
-
-import java.awt.Desktop;
+import javax.swing.*;
+import java.awt.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
@@ -261,21 +260,48 @@ public class ModHealthChecker {
     }
     
     /**
-     * Show in-game notification for broken mod.
+     * Show dialog for broken mod.
      */
     private static void showBrokenModDialog(ModHealthInfo info, List<String> errors) {
-        StringBuilder message = new StringBuilder();
-        message.append("Mod: ").append(info.modName()).append("\n\n");
-        message.append("The game launched but this mod isn't\n");
-        message.append("working correctly after transformation.\n\n");
-        message.append("Please report this bug on GitHub:\n");
-        message.append("github.com/Bownlux/MC-RetroMod/issues\n\n");
-        message.append("Recent errors:\n");
-        for (int i = 0; i < Math.min(3, errors.size()); i++) {
-            message.append("- ").append(truncate(errors.get(i), 60)).append("\n");
-        }
-
-        InGameNotificationManager.queue("RetroMod - Mod Issue Detected", message.toString());
+        SwingUtilities.invokeLater(() -> {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+            
+            StringBuilder message = new StringBuilder();
+            message.append("⚠️ Mod Not Working Properly!\n\n");
+            message.append("═══════════════════════════════════════\n\n");
+            message.append("Mod: ").append(info.modName()).append("\n\n");
+            message.append("The game launched but this mod isn't\n");
+            message.append("working correctly after transformation.\n\n");
+            message.append("═══════════════════════════════════════\n\n");
+            message.append("Please report this bug on GitHub:\n");
+            message.append("→ github.com/Bownlux/MC-RetroMod/issues\n\n");
+            message.append("═══════════════════════════════════════\n\n");
+            message.append("Recent errors:\n");
+            for (int i = 0; i < Math.min(3, errors.size()); i++) {
+                message.append("• ").append(truncate(errors.get(i), 50)).append("\n");
+            }
+            
+            int choice = JOptionPane.showOptionDialog(
+                null,
+                message.toString(),
+                "RetroMod - Mod Issue Detected",
+                JOptionPane.YES_NO_CANCEL_OPTION,
+                JOptionPane.WARNING_MESSAGE,
+                null,
+                new String[]{"Open GitHub Issues", "Restore Original", "Ignore"},
+                "Open GitHub Issues"
+            );
+            
+            if (choice == 0) {
+                // Open GitHub Issues
+                openGitHub();
+            } else if (choice == 1) {
+                // Restore original
+                restoreOriginal(info);
+            }
+        });
     }
     
     /**
@@ -302,13 +328,17 @@ public class ModHealthChecker {
             
             Files.copy(info.backupPath(), destination, StandardCopyOption.REPLACE_EXISTING);
             LOGGER.info("Restored original to retromod-input/: {}", destination.getFileName());
-
-            InGameNotificationManager.queue("Mod Restored",
+            
+            JOptionPane.showMessageDialog(
+                null,
                 "Original mod restored!\n\n" +
                 "The broken transformed version has been deleted.\n" +
                 "The original has been placed back in retromod-input/\n\n" +
                 "Please restart Minecraft to try again.\n" +
-                "If it still doesn't work, report on GitHub Issues");
+                "If it still doesn't work, report on GitHub Issues",
+                "Mod Restored",
+                JOptionPane.INFORMATION_MESSAGE
+            );
             
             return true;
             

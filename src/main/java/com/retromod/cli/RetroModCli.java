@@ -8,6 +8,7 @@ import com.retromod.core.*;
 import com.retromod.embedder.*;
 import com.retromod.aot.AotCompiler;
 import com.retromod.archive.ApiArchiveManager;
+import com.retromod.mixin.MixinCompatibilityTransformer;
 import com.retromod.shim.ShimRegistry;
 import com.retromod.shim.fabric.*;
 import com.retromod.shim.neoforge.*;
@@ -36,7 +37,7 @@ import java.util.*;
 public class RetroModCli {
     
     private static final String VERSION = "1.0.0-beta.1";
-    private static final String TARGET_MC_VERSION = "26.1";
+    private static final String TARGET_MC_VERSION = "1.21.11";
     
     private static ShimRegistry shimRegistry;
     private static ModVersionDetector detector;
@@ -76,7 +77,6 @@ public class RetroModCli {
                 case "legacy" -> legacyCommand(args);
                 case "overrides" -> overridesCommand(args);
                 case "prepare" -> prepareCommand(args);
-                case "mappings" -> mappingsCommand(args);
                 case "devhelp", "migrate" -> devhelpCommand(args);
                 case "help", "-h", "--help" -> printUsage();
                 case "version", "-v", "--version" -> 
@@ -99,7 +99,7 @@ public class RetroModCli {
     }
     
     private static void registerAllShims() {
-        // Fabric shims - complete 1.14.4 to 26.1 chain
+        // Fabric shims - complete 1.14.4 to 1.21.11 chain
         shimRegistry.register(new Fabric_1_14_4_to_1_15_2());
         shimRegistry.register(new Fabric_1_15_2_to_1_16_5());
         shimRegistry.register(new Fabric_1_16_5_to_1_17());
@@ -131,9 +131,8 @@ public class RetroModCli {
         shimRegistry.register(new Fabric_1_21_8_to_1_21_9());
         shimRegistry.register(new Fabric_1_21_9_to_1_21_10());
         shimRegistry.register(new Fabric_1_21_10_to_1_21_11());
-        shimRegistry.register(new Fabric_1_21_10_to_26_1());  // Major: deobfuscation transition
-
-        // NeoForge shims - complete 1.21 to 26.1 chain (step by step)
+        
+        // NeoForge shims - complete 1.21 to 1.21.11 chain (step by step)
         shimRegistry.register(new NeoForge_1_21_to_1_21_1());
         shimRegistry.register(new NeoForge_1_21_1_to_1_21_2());
         shimRegistry.register(new NeoForge_1_21_2_to_1_21_3());
@@ -145,9 +144,8 @@ public class RetroModCli {
         shimRegistry.register(new NeoForge_1_21_8_to_1_21_9());
         shimRegistry.register(new NeoForge_1_21_9_to_1_21_10());
         shimRegistry.register(new NeoForge_1_21_10_to_1_21_11());
-        shimRegistry.register(new NeoForge_1_21_10_to_26_1());  // Major: API changes for 26.1
-
-        // Forge shims - complete 1.21 to 26.1 chain (step by step)
+        
+        // Forge shims - complete 1.21 to 1.21.11 chain (step by step)
         shimRegistry.register(new Forge_1_21_to_1_21_1());
         shimRegistry.register(new Forge_1_21_1_to_1_21_2());
         shimRegistry.register(new Forge_1_21_2_to_1_21_3());
@@ -159,8 +157,7 @@ public class RetroModCli {
         shimRegistry.register(new Forge_1_21_8_to_1_21_9());
         shimRegistry.register(new Forge_1_21_9_to_1_21_10());
         shimRegistry.register(new Forge_1_21_10_to_1_21_11());
-        shimRegistry.register(new Forge_1_21_10_to_26_1());  // Major: SRG→Mojang + API changes
-
+        
         // Forge shims - legacy Forge to NeoForge transition
         shimRegistry.register(new Forge_1_20_to_NeoForge_1_21());
     }
@@ -1174,121 +1171,6 @@ public class RetroModCli {
         System.out.println();
     }
 
-    /**
-     * Mappings command — generate or inspect intermediary→Mojang mapping files.
-     *
-     * Usage:
-     *   mappings generate --intermediary <path> --mojang <path> [--output <path>]
-     *   mappings info
-     */
-    private static void mappingsCommand(String[] args) throws Exception {
-        if (args.length < 2) {
-            System.out.println("Usage:");
-            System.out.println("  mappings generate --intermediary <path> --mojang <path> [--output <path>]");
-            System.out.println("  mappings info");
-            return;
-        }
-
-        String subCommand = args[1].toLowerCase();
-
-        switch (subCommand) {
-            case "info" -> {
-                com.retromod.mapping.IntermediaryToMojangMapper mapper =
-                        new com.retromod.mapping.IntermediaryToMojangMapper();
-                mapper.load();
-                System.out.println();
-                System.out.println("═══════════════════════════════════════════════════════════");
-                System.out.println("  RetroMod Mapping Database");
-                System.out.println("═══════════════════════════════════════════════════════════");
-                System.out.println();
-                System.out.println("  Class mappings:  " + mapper.getClassMappings().size());
-                System.out.println("  Method mappings: " + mapper.getMethodMappings().size());
-                System.out.println("  Field mappings:  " + mapper.getFieldMappings().size());
-                System.out.println();
-                System.out.println("  Sources: Built-in curated mappings");
-
-                // Check for bundled resource
-                if (com.retromod.mapping.IntermediaryToMojangMapper.class
-                        .getResourceAsStream("/mappings/intermediary-to-mojang.tiny") != null) {
-                    System.out.println("           + Bundled mapping file (intermediary-to-mojang.tiny)");
-                }
-
-                // Check for external file
-                Path externalPath = Path.of("config", "retromod", "mappings", "intermediary-to-mojang.tiny");
-                if (Files.exists(externalPath)) {
-                    System.out.println("           + External mapping file (" + externalPath + ")");
-                }
-
-                System.out.println();
-                System.out.println("  Sample mappings:");
-                int count = 0;
-                for (var entry : mapper.getClassMappings().entrySet()) {
-                    if (count >= 10) break;
-                    System.out.printf("    %-40s → %s%n", entry.getKey(), entry.getValue());
-                    count++;
-                }
-                if (mapper.getClassMappings().size() > 10) {
-                    System.out.println("    ... and " + (mapper.getClassMappings().size() - 10) + " more");
-                }
-                System.out.println();
-            }
-
-            case "generate" -> {
-                Path intermediaryPath = null;
-                Path mojangPath = null;
-                Path outputPath = Path.of("config", "retromod", "mappings", "intermediary-to-mojang.tiny");
-
-                for (int i = 2; i < args.length - 1; i++) {
-                    switch (args[i]) {
-                        case "--intermediary" -> intermediaryPath = Path.of(args[++i]);
-                        case "--mojang" -> mojangPath = Path.of(args[++i]);
-                        case "--output" -> outputPath = Path.of(args[++i]);
-                    }
-                }
-
-                if (intermediaryPath == null || mojangPath == null) {
-                    System.err.println("Usage: mappings generate --intermediary <path> --mojang <path> [--output <path>]");
-                    System.err.println();
-                    System.err.println("  --intermediary  Path to Fabric intermediary mapping file (TinyV2 format)");
-                    System.err.println("                  Download from: https://maven.fabricmc.net/net/fabricmc/intermediary/");
-                    System.err.println("  --mojang        Path to Mojang official mapping file (ProGuard format)");
-                    System.err.println("                  Download from: version_manifest_v2.json → downloads.client_mappings");
-                    System.err.println("  --output        Output path (default: config/retromod/mappings/intermediary-to-mojang.tiny)");
-                    System.exit(1);
-                    return;
-                }
-
-                if (!Files.exists(intermediaryPath)) {
-                    System.err.println("Intermediary mapping file not found: " + intermediaryPath);
-                    System.exit(1);
-                    return;
-                }
-                if (!Files.exists(mojangPath)) {
-                    System.err.println("Mojang mapping file not found: " + mojangPath);
-                    System.exit(1);
-                    return;
-                }
-
-                System.out.println("Generating intermediary → Mojang mapping file...");
-                System.out.println("  Intermediary: " + intermediaryPath);
-                System.out.println("  Mojang:       " + mojangPath);
-                System.out.println("  Output:       " + outputPath);
-
-                com.retromod.mapping.MappingComposer.compose(
-                        intermediaryPath, mojangPath, outputPath);
-
-                System.out.println();
-                System.out.println("Done! Generated mapping file at: " + outputPath);
-                System.out.println("RetroMod will automatically load this file on next launch.");
-            }
-
-            default -> {
-                System.err.println("Unknown mappings subcommand: " + subCommand);
-                System.err.println("Available: info, generate");
-            }
-        }
-    }
-
     private static void printUsage() {
         System.out.println();
         System.out.println("=================================================================");
@@ -1296,12 +1178,12 @@ public class RetroModCli {
         System.out.println("   Backwards Compatibility Layer for Minecraft Mods");
         System.out.println("");
         System.out.println("   Supports: Fabric, Forge, NeoForge");
-        System.out.println("   Versions: 1.8 -> 26.1 (deobfuscated)");
+        System.out.println("   Versions: 1.8 -> 1.21.11");
         System.out.println("=================================================================");
         System.out.println();
         System.out.println("Usage: retromod <command> [options]");
         System.out.println();
-        System.out.println("Modern Commands (26.1+):");
+        System.out.println("Modern Commands (1.21.x):");
         System.out.println("  analyze <mod.jar>              Analyze a mod's compatibility");
         System.out.println("  aot <mod.jar>                  AOT compile (recommended)");
         System.out.println("  transform <mod.jar>            JIT-style transformation");
@@ -1312,16 +1194,12 @@ public class RetroModCli {
         System.out.println("  prepare <mc-dir> [--aot]       Full prep: overrides + transform");
         System.out.println("  overrides <mc-dir>             Generate dependency overrides only");
         System.out.println();
-        System.out.println("Legacy Commands (1.8-1.21.x -> 26.1):");
-        System.out.println("  legacy <mod.jar>               Transform legacy mod to 26.1");
+        System.out.println("Legacy Commands (1.8-1.20.x -> 1.21.x):");
+        System.out.println("  legacy <mod.jar>               Transform legacy mod to 1.21.x");
         System.out.println();
         System.out.println("Developer Commands:");
         System.out.println("  devhelp <mod.jar> [target]     Show what to change when updating your mod");
         System.out.println("  migrate <mod.jar> [target]     Alias for devhelp");
-        System.out.println();
-        System.out.println("Mapping Commands (26.1 deobfuscation):");
-        System.out.println("  mappings generate              Generate intermediary→Mojang mapping file");
-        System.out.println("  mappings info                  Show loaded mapping statistics");
         System.out.println();
         System.out.println("Utility Commands:");
         System.out.println("  diff <loader> <v1> <v2>        Show API differences");

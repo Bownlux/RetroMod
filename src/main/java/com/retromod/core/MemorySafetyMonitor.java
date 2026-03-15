@@ -7,8 +7,8 @@ package com.retromod.core;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.retromod.gui.InGameNotificationManager;
-
+import javax.swing.*;
+import java.awt.*;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.MemoryUsage;
@@ -58,10 +58,10 @@ public class MemorySafetyMonitor {
     private final AtomicLong totalTransformTimeNs = new AtomicLong(0);
     private final AtomicInteger totalTransformed = new AtomicInteger(0);
     
-    // TPS tracking — volatile for cross-thread visibility (tick thread vs monitor thread)
+    // TPS tracking
     private volatile int currentTps = NORMAL_TPS;
-    private volatile long lastTickTime = System.currentTimeMillis();
-    private volatile int tickCount = 0;
+    private long lastTickTime = System.currentTimeMillis();
+    private int tickCount = 0;
     
     // State flags
     private volatile boolean shutdownRequested = false;
@@ -185,19 +185,17 @@ public class MemorySafetyMonitor {
             totalTransformed.incrementAndGet();
         }
         
-        // Track per-mod data (synchronized on data object for thread safety)
+        // Track per-mod data
         if (ctx.modId != null) {
             ModPerformanceData data = modPerformance.computeIfAbsent(
-                ctx.modId,
+                ctx.modId, 
                 id -> new ModPerformanceData(id, ctx.modId)
             );
-            synchronized (data) {
-                data.totalTransformTimeNs += elapsed;
-                data.classesTransformed++;
-                data.memoryUsedBytes += memoryUsed;
-                if (!success) {
-                    data.transformErrors++;
-                }
+            data.totalTransformTimeNs += elapsed;
+            data.classesTransformed++;
+            data.memoryUsedBytes += memoryUsed;
+            if (!success) {
+                data.transformErrors++;
             }
         }
     }
@@ -393,12 +391,44 @@ public class MemorySafetyMonitor {
     }
     
     /**
-     * Show in-game performance notification (client only).
+     * Show GUI performance error dialog (client only).
      */
     private void showGuiPerformanceError(String message, boolean isCritical) {
-        String title = isCritical ? "RetroMod - Performance Critical" : "RetroMod - Performance Warning";
-        InGameNotificationManager.queue(title, message);
-        warningShown = false;
+        SwingUtilities.invokeLater(() -> {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+            
+            if (isCritical) {
+                int choice = JOptionPane.showOptionDialog(
+                    null,
+                    message,
+                    "RetroMod - Performance Critical",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.ERROR_MESSAGE,
+                    null,
+                    new String[]{"Exit Game", "Try to Continue"},
+                    "Exit Game"
+                );
+                
+                if (choice == 0) {
+                    LOGGER.error("User chose to exit due to performance issues");
+                    System.exit(1);
+                } else {
+                    LOGGER.warn("User chose to continue despite performance issues");
+                    shutdownRequested = false;
+                    warningShown = false;
+                }
+            } else {
+                JOptionPane.showMessageDialog(
+                    null,
+                    message,
+                    "RetroMod - Performance Warning",
+                    JOptionPane.WARNING_MESSAGE
+                );
+                warningShown = false;
+            }
+        });
     }
     
     /**

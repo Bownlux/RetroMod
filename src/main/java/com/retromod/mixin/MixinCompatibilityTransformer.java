@@ -11,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.*;
 
 /**
@@ -38,8 +37,6 @@ public class MixinCompatibilityTransformer {
     private static final String REDIRECT_DESC = "Lorg/spongepowered/asm/mixin/injection/Redirect;";
     private static final String MODIFY_ARG_DESC = "Lorg/spongepowered/asm/mixin/injection/ModifyArg;";
     private static final String MODIFY_VAR_DESC = "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;";
-    private static final String MODIFY_CONST_DESC = "Lorg/spongepowered/asm/mixin/injection/ModifyConstant;";
-    private static final String MODIFY_ARGS_DESC = "Lorg/spongepowered/asm/mixin/injection/ModifyArgs;";
     private static final String AT_DESC = "Lorg/spongepowered/asm/mixin/injection/At;";
     private static final String MIXIN_DESC = "Lorg/spongepowered/asm/mixin/Mixin;";
     private static final String SHADOW_DESC = "Lorg/spongepowered/asm/mixin/Shadow;";
@@ -47,13 +44,8 @@ public class MixinCompatibilityTransformer {
     private static final String ACCESSOR_DESC = "Lorg/spongepowered/asm/mixin/gen/Accessor;";
     private static final String INVOKER_DESC = "Lorg/spongepowered/asm/mixin/gen/Invoker;";
     
-    // Compiled patterns (avoid recompiling on every call)
-    private static final Pattern ENTRY_PATTERN = Pattern.compile("\"([^\"]+)\"");
-    private static final Map<String, Pattern> ARRAY_PATTERN_CACHE = new ConcurrentHashMap<>();
-    private static final Map<String, Pattern> JSON_STRING_PATTERN_CACHE = new ConcurrentHashMap<>();
-
     private final RetroModTransformer transformer;
-
+    
     // Maps old method references to new ones for Mixin targets
     private final Map<String, String> methodTargetRedirects = new HashMap<>();
     
@@ -107,16 +99,8 @@ public class MixinCompatibilityTransformer {
         LOGGER.debug("Transforming Mixin class: {}", classNode.name);
         
         // Transform class-level annotations (@Mixin targets)
-        // @Mixin uses @Retention(CLASS) → check both visible and invisible annotations
         if (classNode.visibleAnnotations != null) {
             for (AnnotationNode annotation : classNode.visibleAnnotations) {
-                if (MIXIN_DESC.equals(annotation.desc)) {
-                    modified |= transformMixinAnnotation(annotation);
-                }
-            }
-        }
-        if (classNode.invisibleAnnotations != null) {
-            for (AnnotationNode annotation : classNode.invisibleAnnotations) {
                 if (MIXIN_DESC.equals(annotation.desc)) {
                     modified |= transformMixinAnnotation(annotation);
                 }
@@ -132,138 +116,26 @@ public class MixinCompatibilityTransformer {
         for (FieldNode field : classNode.fields) {
             modified |= transformFieldAnnotations(field);
         }
-
-        // Apply class redirects to ALL bytecode within the mixin class.
-        // This is critical: mixin methods get injected into target classes,
-        // so any class references in the mixin body (field accesses, type casts,
-        // method calls, etc.) must also be rewritten to the new class names.
-        Map<String, String> classRedirects = transformer.getClassRedirects();
-        if (!classRedirects.isEmpty()) {
-            modified |= rewriteMixinBytecode(classNode, classRedirects);
-        }
-
+        
         if (!modified) {
             return classBytes;
         }
-
-        // Write modified class using ClassRemapper for thorough class redirect coverage
+        
+        // Write modified class
         ClassWriter writer = new ClassWriter(0);
-        if (!classRedirects.isEmpty()) {
-            org.objectweb.asm.commons.Remapper remapper = new org.objectweb.asm.commons.Remapper() {
-                @Override
-                public String map(String internalName) {
-                    return classRedirects.getOrDefault(internalName, internalName);
-                }
-            };
-            org.objectweb.asm.commons.ClassRemapper remappingVisitor =
-                new org.objectweb.asm.commons.ClassRemapper(writer, remapper);
-            classNode.accept(remappingVisitor);
-        } else {
-            classNode.accept(writer);
-        }
+        classNode.accept(writer);
         return writer.toByteArray();
-    }
-
-    /**
-     * Check mixin bytecode for references to classes that have redirects.
-     * Returns true if any references were found (indicating the ClassRemapper
-     * will make changes when writing).
-     */
-    private boolean rewriteMixinBytecode(ClassNode classNode, Map<String, String> classRedirects) {
-        boolean hasRedirectable = false;
-
-        // Check superclass
-        if (classNode.superName != null && classRedirects.containsKey(classNode.superName)) {
-            LOGGER.debug("Mixin {} superclass {} will be redirected to {}",
-                classNode.name, classNode.superName, classRedirects.get(classNode.superName));
-            hasRedirectable = true;
-        }
-
-        // Check interfaces
-        if (classNode.interfaces != null) {
-            for (String iface : classNode.interfaces) {
-                if (classRedirects.containsKey(iface)) {
-                    hasRedirectable = true;
-                }
-            }
-        }
-
-        // Check fields
-        for (FieldNode field : classNode.fields) {
-            if (field.desc != null) {
-                for (String oldClass : classRedirects.keySet()) {
-                    if (field.desc.contains(oldClass)) {
-                        LOGGER.debug("Mixin {} field {}: {} contains redirect target {}",
-                            classNode.name, field.name, field.desc, oldClass);
-                        hasRedirectable = true;
-                    }
-                }
-            }
-        }
-
-        // Check method bodies
-        for (MethodNode method : classNode.methods) {
-            // Check method descriptor
-            if (method.desc != null) {
-                for (String oldClass : classRedirects.keySet()) {
-                    if (method.desc.contains(oldClass)) {
-                        hasRedirectable = true;
-                    }
-                }
-            }
-
-            // Check instructions
-            if (method.instructions != null) {
-                for (var insn : method.instructions) {
-                    if (insn instanceof org.objectweb.asm.tree.TypeInsnNode typeInsn) {
-                        if (classRedirects.containsKey(typeInsn.desc)) {
-                            hasRedirectable = true;
-                        }
-                    } else if (insn instanceof org.objectweb.asm.tree.FieldInsnNode fieldInsn) {
-                        if (classRedirects.containsKey(fieldInsn.owner)) {
-                            hasRedirectable = true;
-                        }
-                        for (String oldClass : classRedirects.keySet()) {
-                            if (fieldInsn.desc.contains(oldClass)) {
-                                hasRedirectable = true;
-                            }
-                        }
-                    } else if (insn instanceof org.objectweb.asm.tree.MethodInsnNode methodInsn) {
-                        if (classRedirects.containsKey(methodInsn.owner)) {
-                            hasRedirectable = true;
-                        }
-                    }
-                }
-            }
-        }
-
-        if (hasRedirectable) {
-            LOGGER.info("Mixin class {} has references to redirected classes — rewriting bytecode",
-                classNode.name);
-        }
-
-        return hasRedirectable;
     }
     
     /**
      * Check if a class is a Mixin.
-     * Note: @Mixin has @Retention(CLASS), so it appears in invisibleAnnotations, not visibleAnnotations.
      */
     private boolean isMixinClass(ClassNode classNode) {
-        // Check visible annotations first (some compilers/versions may place it here)
-        if (classNode.visibleAnnotations != null) {
-            for (AnnotationNode annotation : classNode.visibleAnnotations) {
-                if (MIXIN_DESC.equals(annotation.desc)) {
-                    return true;
-                }
-            }
-        }
-        // @Mixin uses @Retention(CLASS) → stored as RuntimeInvisibleAnnotation
-        if (classNode.invisibleAnnotations != null) {
-            for (AnnotationNode annotation : classNode.invisibleAnnotations) {
-                if (MIXIN_DESC.equals(annotation.desc)) {
-                    return true;
-                }
+        if (classNode.visibleAnnotations == null) return false;
+        
+        for (AnnotationNode annotation : classNode.visibleAnnotations) {
+            if (MIXIN_DESC.equals(annotation.desc)) {
+                return true;
             }
         }
         return false;
@@ -307,27 +179,22 @@ public class MixinCompatibilityTransformer {
      */
     private boolean transformMethodAnnotations(MethodNode method) {
         boolean modified = false;
-
-        // Mixin annotations use @Retention(CLASS), so they appear in invisibleAnnotations.
-        // Some compilers/versions may place them in visibleAnnotations. Check BOTH.
-        for (List<AnnotationNode> annotationList : new List[]{
-                method.visibleAnnotations, method.invisibleAnnotations}) {
-            if (annotationList == null) continue;
-            for (AnnotationNode annotation : annotationList) {
-                String desc = annotation.desc;
-
-                if (INJECT_DESC.equals(desc) || REDIRECT_DESC.equals(desc) ||
-                    MODIFY_ARG_DESC.equals(desc) || MODIFY_VAR_DESC.equals(desc) ||
-                    MODIFY_CONST_DESC.equals(desc) || MODIFY_ARGS_DESC.equals(desc)) {
-                    modified |= transformInjectionAnnotation(annotation);
-                } else if (SHADOW_DESC.equals(desc) || OVERWRITE_DESC.equals(desc)) {
-                    modified |= transformShadowAnnotation(annotation, method);
-                } else if (ACCESSOR_DESC.equals(desc) || INVOKER_DESC.equals(desc)) {
-                    modified |= transformAccessorAnnotation(annotation, method);
-                }
+        
+        if (method.visibleAnnotations == null) return false;
+        
+        for (AnnotationNode annotation : method.visibleAnnotations) {
+            String desc = annotation.desc;
+            
+            if (INJECT_DESC.equals(desc) || REDIRECT_DESC.equals(desc) ||
+                MODIFY_ARG_DESC.equals(desc) || MODIFY_VAR_DESC.equals(desc)) {
+                modified |= transformInjectionAnnotation(annotation);
+            } else if (SHADOW_DESC.equals(desc) || OVERWRITE_DESC.equals(desc)) {
+                modified |= transformShadowAnnotation(annotation, method);
+            } else if (ACCESSOR_DESC.equals(desc) || INVOKER_DESC.equals(desc)) {
+                modified |= transformAccessorAnnotation(annotation, method);
             }
         }
-
+        
         return modified;
     }
     
@@ -336,22 +203,13 @@ public class MixinCompatibilityTransformer {
      */
     private boolean transformInjectionAnnotation(AnnotationNode annotation) {
         boolean modified = false;
-
-        if (annotation.values == null) {
-            // No values at all — add require=0 so the default doesn't crash
-            annotation.values = new ArrayList<>();
-            annotation.values.add("require");
-            annotation.values.add(0);
-            LOGGER.debug("Added require=0 to injection annotation (had no values)");
-            return true;
-        }
-
-        boolean hasRequire = false;
-
+        
+        if (annotation.values == null) return false;
+        
         for (int i = 0; i < annotation.values.size(); i += 2) {
             String key = (String) annotation.values.get(i);
             Object value = annotation.values.get(i + 1);
-
+            
             // Transform "method" targets
             if ("method".equals(key)) {
                 if (value instanceof List<?> methods) {
@@ -375,18 +233,7 @@ public class MixinCompatibilityTransformer {
                     }
                 }
             }
-
-            // Force require = 0 on all injection annotations so broken targets
-            // don't crash the game. The mixin will simply be skipped silently.
-            if ("require".equals(key)) {
-                hasRequire = true;
-                if (value instanceof Integer intVal && intVal != 0) {
-                    annotation.values.set(i + 1, 0);
-                    modified = true;
-                    LOGGER.debug("Set require=0 on injection annotation (was {})", intVal);
-                }
-            }
-
+            
             // Transform @At annotations
             if ("at".equals(key)) {
                 if (value instanceof AnnotationNode at) {
@@ -400,15 +247,7 @@ public class MixinCompatibilityTransformer {
                 }
             }
         }
-
-        // If no explicit require was found, add require=0 to override config default
-        if (!hasRequire) {
-            annotation.values.add("require");
-            annotation.values.add(0);
-            modified = true;
-            LOGGER.debug("Added require=0 to injection annotation (was using config default)");
-        }
-
+        
         return modified;
     }
     
@@ -624,8 +463,10 @@ public class MixinCompatibilityTransformer {
     private String stripBrokenMixinEntries(String json, String arrayKey, String packagePath,
                                             Map<String, byte[]> classDataLookup) {
         // Find the array in JSON: "client": ["entry1", "entry2", ...]
-        Pattern arrayPattern = ARRAY_PATTERN_CACHE.computeIfAbsent(arrayKey,
-            k -> Pattern.compile("\"" + k + "\"\\s*:\\s*\\[([^\\]]*)]", Pattern.DOTALL));
+        Pattern arrayPattern = Pattern.compile(
+            "\"" + arrayKey + "\"\\s*:\\s*\\[([^\\]]*)]",
+            Pattern.DOTALL
+        );
 
         Matcher matcher = arrayPattern.matcher(json);
         if (!matcher.find()) {
@@ -634,8 +475,9 @@ public class MixinCompatibilityTransformer {
 
         String arrayContent = matcher.group(1);
 
-        // Extract individual entries (uses cached static pattern)
-        Matcher entryMatcher = ENTRY_PATTERN.matcher(arrayContent);
+        // Extract individual entries
+        Pattern entryPattern = Pattern.compile("\"([^\"]+)\"");
+        Matcher entryMatcher = entryPattern.matcher(arrayContent);
 
         List<String> validEntries = new ArrayList<>();
         List<String> removedEntries = new ArrayList<>();
@@ -765,14 +607,6 @@ public class MixinCompatibilityTransformer {
                 return new PartialStripResult(false, null, 0, classNode.methods.size());
             }
 
-            // Check class-level breakage FIRST — @Shadow fields on removed targets,
-            // removed superclass, etc. kill the ENTIRE mixin regardless of methods.
-            // The mixin system crashes at class application time if @Shadow can't resolve.
-            if (hasClassLevelBreakage(classNode)) {
-                LOGGER.debug("Mixin {} has class-level breakage (@Shadow on removed field/class)", className);
-                return new PartialStripResult(true, null, 0, 0);
-            }
-
             List<MethodNode> brokenMethods = new ArrayList<>();
             List<MethodNode> workingMethods = new ArrayList<>();
 
@@ -792,6 +626,10 @@ public class MixinCompatibilityTransformer {
             }
 
             if (brokenMethods.isEmpty()) {
+                // Nothing broken — check class-level issues (superclass, @Shadow fields)
+                if (hasClassLevelBreakage(classNode)) {
+                    return new PartialStripResult(true, null, 0, 0);
+                }
                 return new PartialStripResult(false, null, 0, workingMethods.size());
             }
 
@@ -843,11 +681,9 @@ public class MixinCompatibilityTransformer {
             }
         }
 
-        // Check mixin annotation targets (visible AND invisible — Mixin uses @Retention(CLASS))
-        for (List<AnnotationNode> annotationList : new List[]{
-                method.visibleAnnotations, method.invisibleAnnotations}) {
-            if (annotationList == null) continue;
-            for (AnnotationNode ann : annotationList) {
+        // Check mixin annotation targets
+        if (method.visibleAnnotations != null) {
+            for (AnnotationNode ann : method.visibleAnnotations) {
                 if (INJECT_DESC.equals(ann.desc) || REDIRECT_DESC.equals(ann.desc) ||
                     MODIFY_ARG_DESC.equals(ann.desc) || MODIFY_VAR_DESC.equals(ann.desc)) {
                     List<String> targets = extractAnnotationMethodTargets(ann);
@@ -891,45 +727,10 @@ public class MixinCompatibilityTransformer {
             return true;
         }
 
-        // Check @Mixin target classes — if the target is removed/became-interface,
-        // the entire mixin is broken (crashes during PREPARE phase)
-        for (List<AnnotationNode> annList : new List[]{
-                classNode.visibleAnnotations, classNode.invisibleAnnotations}) {
-            if (annList == null) continue;
-            for (AnnotationNode ann : annList) {
-                if (MIXIN_DESC.equals(ann.desc) && ann.values != null) {
-                    for (int i = 0; i < ann.values.size(); i += 2) {
-                        String key = (String) ann.values.get(i);
-                        Object value = ann.values.get(i + 1);
-                        // "value" contains Type[] of target classes
-                        if ("value".equals(key) && value instanceof List<?> targets) {
-                            for (Object target : targets) {
-                                if (target instanceof org.objectweb.asm.Type type) {
-                                    String internalName = type.getInternalName();
-                                    if (isKnownRemovedClass(internalName)) return true;
-                                }
-                            }
-                        }
-                        // "targets" contains String[] of target class names
-                        if ("targets".equals(key) && value instanceof List<?> targets) {
-                            for (Object target : targets) {
-                                if (target instanceof String s) {
-                                    String internal = s.replace('.', '/');
-                                    if (isKnownRemovedClass(internal)) return true;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Check @Shadow fields referencing removed types (visible AND invisible)
+        // Check @Shadow fields referencing removed types
         for (FieldNode field : classNode.fields) {
-            for (List<AnnotationNode> annotationList : new List[]{
-                    field.visibleAnnotations, field.invisibleAnnotations}) {
-                if (annotationList == null) continue;
-                for (AnnotationNode ann : annotationList) {
+            if (field.visibleAnnotations != null) {
+                for (AnnotationNode ann : field.visibleAnnotations) {
                     if (SHADOW_DESC.equals(ann.desc)) {
                         if (isKnownRemovedField("." + field.name)) return true;
                         if (field.desc != null && field.desc.startsWith("L") && field.desc.endsWith(";")) {
@@ -1009,13 +810,11 @@ public class MixinCompatibilityTransformer {
             // @Overwrite methods with old names, @Shadow fields with old names
 
             // Check @Overwrite methods — if the method name matches a removed/renamed method
-            // Mixin uses @Retention(CLASS) → check both visible AND invisible annotations
             for (MethodNode method : classNode.methods) {
-                for (List<AnnotationNode> annList : new List[]{
-                        method.visibleAnnotations, method.invisibleAnnotations}) {
-                    if (annList == null) continue;
-                    for (AnnotationNode ann : annList) {
+                if (method.visibleAnnotations != null) {
+                    for (AnnotationNode ann : method.visibleAnnotations) {
                         if (OVERWRITE_DESC.equals(ann.desc)) {
+                            // The method name IS the target — check if it's removed
                             if (isKnownRemovedMethod("." + method.name)) {
                                 LOGGER.debug("Mixin {} has @Overwrite on removed method: {}", className, method.name);
                                 return true;
@@ -1027,25 +826,24 @@ public class MixinCompatibilityTransformer {
 
             // Check @Inject/@Redirect method targets from annotations
             for (MethodNode method : classNode.methods) {
-                for (List<AnnotationNode> annList : new List[]{
-                        method.visibleAnnotations, method.invisibleAnnotations}) {
-                    if (annList == null) continue;
-                    for (AnnotationNode ann : annList) {
-                        if (INJECT_DESC.equals(ann.desc) || REDIRECT_DESC.equals(ann.desc) ||
-                            MODIFY_ARG_DESC.equals(ann.desc) || MODIFY_VAR_DESC.equals(ann.desc)) {
-                            List<String> targets = extractAnnotationMethodTargets(ann);
-                            for (String target : targets) {
-                                if (isKnownRemovedMethod("." + target)) {
-                                    LOGGER.debug("Mixin {} @Inject/@Redirect targets removed method: {}", className, target);
-                                    return true;
-                                }
+                if (method.visibleAnnotations == null) continue;
+                for (AnnotationNode ann : method.visibleAnnotations) {
+                    if (INJECT_DESC.equals(ann.desc) || REDIRECT_DESC.equals(ann.desc) ||
+                        MODIFY_ARG_DESC.equals(ann.desc) || MODIFY_VAR_DESC.equals(ann.desc)) {
+                        // Check "method" targets
+                        List<String> targets = extractAnnotationMethodTargets(ann);
+                        for (String target : targets) {
+                            if (isKnownRemovedMethod("." + target)) {
+                                LOGGER.debug("Mixin {} @Inject/@Redirect targets removed method: {}", className, target);
+                                return true;
                             }
-                            List<String> atTargets = extractAtTargets(ann);
-                            for (String atTarget : atTargets) {
-                                if (isKnownRemovedMethod(atTarget.replace(";", "."))) {
-                                    LOGGER.debug("Mixin {} @At targets removed method: {}", className, atTarget);
-                                    return true;
-                                }
+                        }
+                        // Check @At targets
+                        List<String> atTargets = extractAtTargets(ann);
+                        for (String atTarget : atTargets) {
+                            if (isKnownRemovedMethod(atTarget.replace(";", "."))) {
+                                LOGGER.debug("Mixin {} @At targets removed method: {}", className, atTarget);
+                                return true;
                             }
                         }
                     }
@@ -1054,10 +852,8 @@ public class MixinCompatibilityTransformer {
 
             // Check @Shadow fields by name
             for (FieldNode field : classNode.fields) {
-                for (List<AnnotationNode> annList : new List[]{
-                        field.visibleAnnotations, field.invisibleAnnotations}) {
-                    if (annList == null) continue;
-                    for (AnnotationNode ann : annList) {
+                if (field.visibleAnnotations != null) {
+                    for (AnnotationNode ann : field.visibleAnnotations) {
                         if (SHADOW_DESC.equals(ann.desc)) {
                             if (isKnownRemovedField("." + field.name)) {
                                 LOGGER.debug("Mixin {} has @Shadow on removed field: {}", className, field.name);
@@ -1185,28 +981,8 @@ public class MixinCompatibilityTransformer {
         // ChatOptionsScreen - removed
         KNOWN_REMOVED_CLASSES.add("net/minecraft/class_5500");
 
-        // Note: class_442 is TitleScreen — it still exists! Do NOT add it here.
-        // SocialInteractionsScreen is class_5522 — it also still exists in 1.21.11.
-
-        // Classes that became interfaces (standard mixins can't target interfaces)
-        KNOWN_REMOVED_CLASSES.add("net/minecraft/class_284"); // GlUniform/Uniform — was class, now interface in 1.21+
-
-        // VoxelShape internals — heavily restructured between versions.
-        // Old mixin optimizations (e.g. Lithium) corrupt these and cause NPEs in block init.
-        KNOWN_REMOVED_CLASSES.add("net/minecraft/class_249");  // SimpleVoxelShape (internals changed)
-        KNOWN_REMOVED_CLASSES.add("net/minecraft/class_246");  // FractionalDoubleList (internals changed)
-        KNOWN_REMOVED_CLASSES.add("net/minecraft/class_255");  // PairList / shape merging (internals changed)
-
-        // Math classes removed in 1.19.3 — Minecraft switched to JOML (org.joml.*).
-        // Old MC classes were completely deleted. Sodium 1.16.5 targets these with mixins.
-        KNOWN_REMOVED_CLASSES.add("net/minecraft/class_1159"); // Matrix4f (replaced by org.joml.Matrix4f)
-        KNOWN_REMOVED_CLASSES.add("net/minecraft/class_4581"); // Matrix3f (replaced by org.joml.Matrix3f)
-        KNOWN_REMOVED_CLASSES.add("net/minecraft/class_1158"); // Quaternion (replaced by org.joml.Quaternionf)
-        KNOWN_REMOVED_CLASSES.add("net/minecraft/class_1160"); // Vec3f (replaced by org.joml.Vector3f)
-
-        // DirectionProperty — removed/merged into EnumProperty (class_2754) in newer versions.
-        // Lithium's HopperBlockEntityMixin and PistonBlockEntityMixin reference this in bytecode.
-        KNOWN_REMOVED_CLASSES.add("net/minecraft/class_2753"); // DirectionProperty (merged into EnumProperty)
+        // Various removed screen/GUI classes
+        KNOWN_REMOVED_CLASSES.add("net/minecraft/class_442"); // SocialInteractionsScreen in some versions
     }
 
     static {
@@ -1257,34 +1033,26 @@ public class MixinCompatibilityTransformer {
         KNOWN_REMOVED_METHODS.add(ownerAndName);
     }
 
-    /**
-     * Check if a class is in the KNOWN_REMOVED_CLASSES set.
-     * Public for testing purposes.
-     */
-    public static boolean isKnownRemovedClass(String internalName) {
+    private boolean isKnownRemovedClass(String internalName) {
         return KNOWN_REMOVED_CLASSES.contains(internalName);
     }
 
     private boolean isKnownRemovedField(String refField) {
         for (String removed : KNOWN_REMOVED_FIELDS) {
-            if (refField.equals(removed)) return true;
-            // Match ".fieldName" suffix only on a dot boundary to avoid false positives
-            if (refField.startsWith(".") && removed.endsWith(refField)) return true;
-            if (removed.startsWith(".") && refField.endsWith(removed)) return true;
+            if (refField.startsWith(removed)) {
+                return true;
+            }
         }
         return false;
     }
 
     private boolean isKnownRemovedMethod(String refMethod) {
-        // refMethod can be:
-        //   "owner.nameDesc" (from bytecode instructions)
-        //   ".methodName"    (from annotation targets without owner)
-        //   "owner.name"     (exact match)
+        // refMethod format: "owner.nameDesc"
+        // Check against "owner.name" (without descriptor)
         for (String removed : KNOWN_REMOVED_METHODS) {
-            if (refMethod.equals(removed)) return true;
-            // Match ".methodName" suffix only on a dot boundary to avoid false positives
-            if (refMethod.startsWith(".") && removed.endsWith(refMethod)) return true;
-            if (removed.startsWith(".") && refMethod.endsWith(removed)) return true;
+            if (refMethod.startsWith(removed)) {
+                return true;
+            }
         }
         return false;
     }
@@ -1293,8 +1061,7 @@ public class MixinCompatibilityTransformer {
      * Extract a string value from JSON by key name.
      */
     private String extractJsonString(String json, String key) {
-        Pattern pattern = JSON_STRING_PATTERN_CACHE.computeIfAbsent(key,
-            k -> Pattern.compile("\"" + k + "\"\\s*:\\s*\"([^\"]+)\""));
+        Pattern pattern = Pattern.compile("\"" + key + "\"\\s*:\\s*\"([^\"]+)\"");
         Matcher matcher = pattern.matcher(json);
         if (matcher.find()) {
             return matcher.group(1);

@@ -20,10 +20,10 @@ import java.lang.reflect.*;
  */
 public class EntityShim {
     
-    private static volatile Method getWorldMethod = null;
-    private static volatile Method getEntityWorldMethod = null;
-    private static volatile Method getBlockPosMethod = null;
-    private static volatile boolean methodsInitialized = false;
+    private static Method getWorldMethod = null;
+    private static Method getEntityWorldMethod = null;
+    private static Method getBlockPosMethod = null;
+    private static boolean methodsInitialized = false;
     
     /**
      * Gets the block position of an entity.
@@ -142,31 +142,27 @@ public class EntityShim {
     }
     
     private static void initMethods(Class<?> entityClass) {
-        if (methodsInitialized) return; // Fast path — volatile read
-
-        synchronized (EntityShim.class) {
-            if (methodsInitialized) return; // Double-check under lock
-
+        if (methodsInitialized) return;
+        
+        try {
+            // Try to find getEntityWorld (1.21.9+)
             try {
-                // Try to find getEntityWorld (1.21.9+)
-                try {
-                    getEntityWorldMethod = entityClass.getMethod("getEntityWorld");
-                } catch (NoSuchMethodException ignored) {}
-
-                // Try to find getWorld (pre-1.21.9)
-                try {
-                    getWorldMethod = entityClass.getMethod("getWorld");
-                } catch (NoSuchMethodException ignored) {}
-
-                // Try to find getBlockPos
-                try {
-                    getBlockPosMethod = entityClass.getMethod("getBlockPos");
-                } catch (NoSuchMethodException ignored) {}
-
-                methodsInitialized = true; // Volatile write — publishes all fields above
-            } catch (Exception e) {
-                System.err.println("RetroMod: EntityShim init error: " + e.getMessage());
-            }
+                getEntityWorldMethod = entityClass.getMethod("getEntityWorld");
+            } catch (NoSuchMethodException ignored) {}
+            
+            // Try to find getWorld (pre-1.21.9)
+            try {
+                getWorldMethod = entityClass.getMethod("getWorld");
+            } catch (NoSuchMethodException ignored) {}
+            
+            // Try to find getBlockPos
+            try {
+                getBlockPosMethod = entityClass.getMethod("getBlockPos");
+            } catch (NoSuchMethodException ignored) {}
+            
+            methodsInitialized = true;
+        } catch (Exception e) {
+            System.err.println("RetroMod: EntityShim init error: " + e.getMessage());
         }
     }
     

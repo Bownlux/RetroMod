@@ -8,7 +8,6 @@ import com.retromod.shim.ShimRegistry;
 import com.retromod.embedder.ApiEmbedder;
 import com.retromod.embedder.ModVersionInfo;
 import com.retromod.aot.AotCompiler;
-import com.retromod.mapping.IntermediaryToMojangMapper;
 import com.retromod.mixin.MixinCompatibilityTransformer;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
@@ -33,7 +32,7 @@ public class RetroMod implements ModInitializer {
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
     
     // Current target Minecraft version - auto-detected at runtime
-    public static String TARGET_MC_VERSION = "26.1";
+    public static String TARGET_MC_VERSION = "1.21.4";
 
     // Initialize target version from mod loader
     static {
@@ -88,7 +87,7 @@ public class RetroMod implements ModInitializer {
     // Backup folder for original mods
     public static final Path BACKUP_FOLDER = Path.of("mods/retromod-backups");
     
-    private static volatile RetroMod instance;
+    private static RetroMod instance;
     private ShimRegistry shimRegistry;
     private ApiEmbedder apiEmbedder;
     private ModVersionDetector versionDetector;
@@ -103,12 +102,11 @@ public class RetroMod implements ModInitializer {
     
     // Supported target versions (add new MC versions here)
     public static final String[] SUPPORTED_TARGET_VERSIONS = {
-        // Primary target: Minecraft 26.1+ (deobfuscated, Mojang official names)
-        "26.1", "26.1.0", "26.1.1", "26.1.2", "26.2.0",
-        // Legacy 1.21.x support (obfuscated, intermediary names)
-        "1.21", "1.21.1", "1.21.2", "1.21.3", "1.21.4", "1.21.5",
+        "1.21", "1.21.1", "1.21.2", "1.21.3", "1.21.4", "1.21.5", 
         "1.21.6", "1.21.7", "1.21.8", "1.21.9", "1.21.10", "1.21.11",
-        "1.22", "1.22.1", "1.22.2"
+        // Future versions - ready when MC releases them
+        "1.22", "1.22.1", "1.22.2",
+        "26.1.0", "26.1.1", "26.1.2", "26.2.0" // Future 2026 versions
     };
     
     @Override
@@ -183,18 +181,6 @@ public class RetroMod implements ModInitializer {
             registerShims();
         } catch (Exception e) {
             LOGGER.warn("Could not register shims", e);
-        }
-
-        // Load intermediary → Mojang mappings if targeting 26.1+
-        try {
-            if (IntermediaryToMojangMapper.isDeobfuscatedVersion(TARGET_MC_VERSION)) {
-                LOGGER.info("Target is 26.1+ — loading intermediary→Mojang name mappings...");
-                IntermediaryToMojangMapper mapper = new IntermediaryToMojangMapper();
-                mapper.load();
-                mapper.registerWithTransformer(RetroModTransformer.getInstance());
-            }
-        } catch (Exception e) {
-            LOGGER.warn("Could not load intermediary→Mojang mappings", e);
         }
 
         // Register polyfills (re-implemented removed APIs)
@@ -363,9 +349,6 @@ public class RetroMod implements ModInitializer {
                 if (config.has("transform_mixins")) transformMixins = config.get("transform_mixins").getAsBoolean();
                 if (config.has("polyfills_enabled")) polyfillsEnabled = config.get("polyfills_enabled").getAsBoolean();
 
-                // Load debug system
-                RetroModDebug.loadConfig(config);
-
                 LOGGER.info("Loaded config from {}", configPath);
             } catch (Exception e) {
                 LOGGER.warn("Could not load config, using defaults", e);
@@ -399,16 +382,7 @@ public class RetroMod implements ModInitializer {
                   "target_mc_version": "auto",
 
                   "debug": false,
-                  "debug_options": {
-                    "dump_bytecode": false,
-                    "log_all_redirects": false,
-                    "log_mixin_transforms": false,
-                    "log_class_scanning": false,
-                    "log_skipped_classes": false,
-                    "dump_mixin_configs": false,
-                    "scan_removed_refs": false,
-                    "trace_class_loading": false
-                  },
+                  "dump_bytecode": false,
 
                   "force_translate_complex": false,
 

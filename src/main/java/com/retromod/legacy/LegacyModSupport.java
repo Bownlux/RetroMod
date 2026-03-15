@@ -444,9 +444,6 @@ public class LegacyModSupport {
                         return extractLiteLoaderVersion(jar.getInputStream(entry));
                     }
                 }
-                case RIFT, UNKNOWN -> {
-                    // No version detection available for these loader types
-                }
             }
         } catch (Exception e) {
             // Fall through to heuristic detection

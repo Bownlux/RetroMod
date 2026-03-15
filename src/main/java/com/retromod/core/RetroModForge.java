@@ -284,16 +284,27 @@ public class RetroModForge {
     }
 
     /**
-     * Queue a restart notification for in-game display.
+     * Show a popup telling the user to restart Minecraft.
      */
     private void showRestartPopup(int transformedCount) {
-        com.retromod.gui.InGameNotificationManager.queue(
-            "RetroMod - Restart Required",
-            "RetroMod transformed " + transformedCount + " mod(s).\n\n" +
-            "Please close Minecraft and launch it again\n" +
-            "for the changes to take effect.\n\n" +
-            "This only happens the first time."
-        );
+        if (!EnvironmentDetector.canShowGui()) return;
+
+        Thread popupThread = new Thread(() -> {
+            try {
+                javax.swing.UIManager.setLookAndFeel(
+                    javax.swing.UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+
+            javax.swing.JOptionPane.showMessageDialog(null,
+                "RetroMod transformed " + transformedCount + " mod(s).\n\n" +
+                "Please close Minecraft and launch it again\n" +
+                "for the changes to take effect.\n\n" +
+                "This only happens the first time.",
+                "RetroMod - Restart Required",
+                javax.swing.JOptionPane.INFORMATION_MESSAGE);
+        }, "RetroMod-RestartPopup");
+        popupThread.setDaemon(true);
+        popupThread.start();
     }
 
     private void scanForRuntimeTransformableMods() {

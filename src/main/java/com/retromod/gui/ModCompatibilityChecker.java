@@ -5,6 +5,7 @@
 package com.retromod.gui;
 
 import com.retromod.core.ModVersionDetector;
+import com.retromod.core.RetroModTransformer;
 import com.retromod.core.FabricModTransformer;
 import com.retromod.aot.AotCompiler;
 import com.retromod.shim.ShimRegistry;
@@ -12,9 +13,10 @@ import com.retromod.embedder.ModVersionInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
-
+import java.util.*;
 
 /**
  * Mod compatibility checker - used internally by the GUI.

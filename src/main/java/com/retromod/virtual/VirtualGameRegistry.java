@@ -5,23 +5,20 @@
 package com.retromod.virtual;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Virtual replacement for GameRegistry.
  * This was the main way to register blocks/items in 1.8-1.12.
  */
 public class VirtualGameRegistry {
-
-    // Thread-safe maps — multiple legacy mods may register concurrently
-    private static final Map<String, Object> BLOCKS = new ConcurrentHashMap<>();
-    private static final Map<String, Object> ITEMS = new ConcurrentHashMap<>();
-    private static final Map<String, Object> TILE_ENTITIES = new ConcurrentHashMap<>();
-    private static final Map<String, Object> ENTITIES = new ConcurrentHashMap<>();
-
+    
+    private static final Map<String, Object> BLOCKS = new LinkedHashMap<>();
+    private static final Map<String, Object> ITEMS = new LinkedHashMap<>();
+    private static final Map<String, Object> TILE_ENTITIES = new LinkedHashMap<>();
+    private static final Map<String, Object> ENTITIES = new LinkedHashMap<>();
+    
     // Pending registrations queue - bridged to modern registry at runtime
-    private static final List<PendingRegistration> PENDING = new CopyOnWriteArrayList<>();
+    private static final List<PendingRegistration> PENDING = new ArrayList<>();
     
     public static void registerBlock(Object block, String name) {
         BLOCKS.put(name, block);

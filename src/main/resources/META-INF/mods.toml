@@ -14,10 +14,9 @@ Backwards compatibility layer for Minecraft mods.
 Run older mods on newer Minecraft versions automatically!
 
 Supports:
-- Minecraft 26.1+ (deobfuscated Mojang official names)
-- Forge cross-version compatibility
+- Forge 1.8-1.20.x to 1.21.x transformation
 - NeoForge migration
-- Legacy mod translation (1.8+ through full shim chain)
+- Legacy Forge 1.8-1.12 to 1.21.x (experimental)
 
 Just drop your old mods in retromod-input/ - RetroMod transforms them!
 
@@ -38,6 +37,6 @@ side = "BOTH"
 [[dependencies.retromod]]
 modId = "minecraft"
 mandatory = true
-versionRange = "[26.1,)"
+versionRange = "[1.21,)"
 ordering = "NONE"
 side = "BOTH"
