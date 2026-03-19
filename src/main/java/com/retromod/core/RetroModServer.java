@@ -67,7 +67,7 @@ public class RetroModServer implements DedicatedServerModInitializer {
         // Initialize hybrid engine for server
         try {
             HybridTransformationEngine hybrid = HybridTransformationEngine.getInstance();
-            hybrid.initialize(modsFolder, "1.21.11");
+            hybrid.initialize(modsFolder, "26.1");
             LOGGER.info("Hybrid AOT/JIT engine initialized for server");
         } catch (Exception e) {
             LOGGER.warn("Could not initialize hybrid engine: {}", e.getMessage());

@@ -4,7 +4,7 @@
  * 
  * LEGACY MOD SUPPORT SYSTEM
  * 
- * This module enables running mods from Minecraft 1.8+ on modern 1.21.x clients.
+ * This module enables running mods from Minecraft 1.8+ on modern 26.1 clients.
  * 
  * Minecraft Version Epochs:
  * ─────────────────────────────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ public class LegacyModSupport {
         MODERN_FOUNDATION_1_14_TO_1_16(3, "1.14", "1.16.5", 8, "Modern Foundation"),
         CAVES_CLIFFS_1_17_TO_1_18(4, "1.17", "1.18.2", 17, "Caves & Cliffs"),
         DATA_DRIVEN_1_19_TO_1_20(5, "1.19", "1.20.4", 17, "Data-Driven"),
-        MODERN_1_20_5_PLUS(6, "1.20.5", "1.21.11", 21, "Modern Era");
+        MODERN_1_20_5_PLUS(6, "1.20.5", "26.1", 21, "Modern Era");
         
         public final int order;
         public final String startVersion;

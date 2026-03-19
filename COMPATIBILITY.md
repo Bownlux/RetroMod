@@ -1,6 +1,6 @@
 # RetroMod Compatibility List
 
-> **RetroMod v1.0.0-beta.1** | **Target: Minecraft 1.21.11** | **Fabric Loader 0.18.4**
+> **RetroMod v1.0.0-beta.1** | **Target: Minecraft 26.1** | **Fabric Loader 0.18.4**
 >
 > Last updated: 2026-03-10
 

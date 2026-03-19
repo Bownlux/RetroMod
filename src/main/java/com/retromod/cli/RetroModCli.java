@@ -987,7 +987,7 @@ public class RetroModCli {
     }
     
     /**
-     * Transform a legacy mod (1.8-1.20.x) to run on modern 1.21.x.
+     * Transform a legacy mod (1.8-1.20.x) to run on modern 26.1.
      */
     private static void legacyCommand(String[] args) throws Exception {
         if (args.length < 2) {
@@ -1007,7 +1007,7 @@ public class RetroModCli {
         System.out.println();
         System.out.println("=================================================================");
         System.out.println("         RetroMod LEGACY Transformation");
-        System.out.println("   Transform mods from MC 1.8+ to run on 1.21.x");
+        System.out.println("   Transform mods from MC 1.8+ to run on 26.1");
         System.out.println("=================================================================");
         System.out.println();
         
@@ -1651,7 +1651,7 @@ public class RetroModCli {
         System.out.println("  retromod batch ./mods --aot");
         System.out.println();
         System.out.println("  # See what API changes you need for updating your own mod");
-        System.out.println("  retromod devhelp mymod-1.21.4.jar 1.21.11");
+        System.out.println("  retromod devhelp mymod-1.21.4.jar 26.1");
         System.out.println();
         System.out.println("Target Minecraft version: " + TARGET_MC_VERSION);
         System.out.println();

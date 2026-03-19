@@ -267,9 +267,9 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
             return FabricLoader.getInstance()
                 .getModContainer("minecraft")
                 .map(c -> c.getMetadata().getVersion().getFriendlyString())
-                .orElse("1.21.11");
+                .orElse("26.1");
         } catch (Exception e) {
-            return "1.21.11";
+            return "26.1";
         }
     }
     

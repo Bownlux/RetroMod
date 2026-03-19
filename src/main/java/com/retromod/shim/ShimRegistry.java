@@ -65,6 +65,13 @@ public class ShimRegistry {
         aliases.put("26.1-pre-2", "26.1");
         aliases.put("26.1 Pre-Release 1", "26.1");
         aliases.put("26.1 Pre-Release 2", "26.1");
+        aliases.put("26.1-pre.3", "26.1");
+        aliases.put("26.1-pre-3", "26.1");
+        aliases.put("26.1 Pre-Release 3", "26.1");
+        // Release candidates
+        aliases.put("26.1-rc.1", "26.1");
+        aliases.put("26.1-rc-1", "26.1");
+        aliases.put("26.1 Release Candidate 1", "26.1");
         // Snapshots
         aliases.put("26.1-snapshot.1", "26.1");
         aliases.put("26.1-snapshot.2", "26.1");

@@ -28,7 +28,7 @@ import java.util.*;
 public class ModCompatibilityChecker {
     
     private static final Logger LOGGER = LoggerFactory.getLogger("RetroMod");
-    private static final String TARGET_VERSION = "1.21.11";
+    private static final String TARGET_VERSION = "26.1";
     
     private final Path modsFolder;
     private final Path backupsFolder;
