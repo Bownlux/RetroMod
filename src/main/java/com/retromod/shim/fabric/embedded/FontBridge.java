@@ -44,23 +44,23 @@ public final class FontBridge {
     private static volatile boolean initialized = false;
     private static volatile boolean initFailed = false;
 
-    // PoseStack → Matrix4f extraction
-    private static Method poseStackLast;       // PoseStack.last() -> Pose
-    private static Method posePose;            // Pose.pose() -> Matrix4f
+    // PoseStack → Matrix4f extraction (volatile for thread-safety in DCL pattern)
+    private static volatile Method poseStackLast;       // PoseStack.last() -> Pose
+    private static volatile Method posePose;            // Pose.pose() -> Matrix4f
 
     // Minecraft.getInstance().renderBuffers().bufferSource()
-    private static Method minecraftGetInstance;
-    private static Method renderBuffers;
-    private static Method bufferSource;
-    private static Method bufferSourceEndBatch; // to flush after drawing
+    private static volatile Method minecraftGetInstance;
+    private static volatile Method renderBuffers;
+    private static volatile Method bufferSource;
+    private static volatile Method bufferSourceEndBatch; // to flush after drawing
 
     // Font.drawInBatch (the new 26.1 method)
-    private static Method drawInBatchString;   // String variant
-    private static Method drawInBatchComponent; // Component variant
-    private static Method drawInBatchFCSeq;    // FormattedCharSequence variant
+    private static volatile Method drawInBatchString;   // String variant
+    private static volatile Method drawInBatchComponent; // Component variant
+    private static volatile Method drawInBatchFCSeq;    // FormattedCharSequence variant
 
     // Font.DisplayMode enum constants
-    private static Object displayModeNormal;
+    private static volatile Object displayModeNormal;
     private static Object displayModeSeeThrough;
 
     // Component.getString() for Component→String fallback
