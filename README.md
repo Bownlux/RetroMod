@@ -453,6 +453,22 @@ public class Fabric_X_to_Y implements VersionShim {
 
 **Adding a polyfill:** Fork → create a `PolyfillProvider` in `src/main/java/com/retromod/polyfill/` → add reimplementation classes at the original package path that delegate to modern APIs → register in `META-INF/services/com.retromod.polyfill.PolyfillProvider` → PR.
 
+## Badge for Translated Mods
+
+If you used RetroMod to translate your mod to a newer version, you can optionally add this badge to your mod page:
+
+[![Translated with RetroMod](https://img.shields.io/badge/Translated_with-RetroMod-blue?style=for-the-badge&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAYAAAAfSC3RAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAADqADAAQAAAABAAAADgAAAAC98Dn6AAACM0lEQVQoFY1Sy27TQBQ9Hs94HNd5NE3SpA8gRRQkqBBCZYNQs+EhYI8EEkJ8A/wDCH6DFRKrQtfAlgrRiqKi0iatmoaGPJw0Dye2hxlKIl4LriVrPPec8dxzjoZ/VBzxiMmTGdXquuW9KqqNP2Harxvj5uzMCE89YMy8ruk0rXrC90r9fmep5ZaffO1+3hzgh8Qpe27BMtPPOA9PeoEH7WdHCIASip7bLDrd0u3SweprRdbVa9w8mY2MZJYMHp7oeS4SsSRyF67i+JFZVJwyDtoNMMMKM8Ku0YC9aHmV+iExfOqRacZzAgHmz1xEbv4K4vYYwiMRzEydkEcLlCpFUBqytUDwmrvzkighqG7dCEQAzkzEWAI76Q7WFwI0jA52C5v4tlOEurmQD2XWzVGMRqlpJCaIrqcOt4Fm3UFHcAQhHXm2ger5Nnr7cuaiRBABhQ0ZyQxRMw5KBAE8X4IMHW4EcPIlkOwo+N2z0Obk2f1gAIXOfNELhdL3dMojvlSz2a2DStfYxxac1S20nn9Ar90BOZ2CWNmHL/p7jeaXx0SZ6/ntRQ0EQmrfcB1srSxj9+0yOvs1kFn5x0vHIHYbck4NXr+9qDg/VDVgrXFq3bKtmK1JA5UIPeFC0zXwc5PQ1A0/1eBzr+SU8/eHdqiFbcTfUZ1dJsSIKLItrYhFE6ivFRBs1NAXraI/ze4U1t+8V4MOk6M+ojiaHYtOP/w9cr6K3KuKs/3UwfbfkVPEQf1PyL8D1zPyAOjcRY4AAAAASUVORK5CYII=)](https://modrinth.com/mod/retromod)
+
+**Markdown:**
+```
+[![Translated with RetroMod](https://img.shields.io/badge/Translated_with-RetroMod-blue?style=for-the-badge&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAYAAAAfSC3RAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAADqADAAQAAAABAAAADgAAAAC98Dn6AAACM0lEQVQoFY1Sy27TQBQ9Hs94HNd5NE3SpA8gRRQkqBBCZYNQs+EhYI8EEkJ8A/wDCH6DFRKrQtfAlgrRiqKi0iatmoaGPJw0Dye2hxlKIl4LriVrPPec8dxzjoZ/VBzxiMmTGdXquuW9KqqNP2Harxvj5uzMCE89YMy8ruk0rXrC90r9fmep5ZaffO1+3hzgh8Qpe27BMtPPOA9PeoEH7WdHCIASip7bLDrd0u3SweprRdbVa9w8mY2MZJYMHp7oeS4SsSRyF67i+JFZVJwyDtoNMMMKM8Ku0YC9aHmV+iExfOqRacZzAgHmz1xEbv4K4vYYwiMRzEydkEcLlCpFUBqytUDwmrvzkighqG7dCEQAzkzEWAI76Q7WFwI0jA52C5v4tlOEurmQD2XWzVGMRqlpJCaIrqcOt4Fm3UFHcAQhHXm2ger5Nnr7cuaiRBABhQ0ZyQxRMw5KBAE8X4IMHW4EcPIlkOwo+N2z0Obk2f1gAIXOfNELhdL3dMojvlSz2a2DStfYxxac1S20nn9Ar90BOZ2CWNmHL/p7jeaXx0SZ6/ntRQ0EQmrfcB1srSxj9+0yOvs1kFn5x0vHIHYbck4NXr+9qDg/VDVgrXFq3bKtmK1JA5UIPeFC0zXwc5PQ1A0/1eBzr+SU8/eHdqiFbcTfUZ1dJsSIKLItrYhFE6ivFRBs1NAXraI/ze4U1t+8V4MOk6M+ojiaHYtOP/w9cr6K3KuKs/3UwfbfkVPEQf1PyL8D1zPyAOjcRY4AAAAASUVORK5CYII=)](https://modrinth.com/mod/retromod)
+```
+
+**HTML:**
+```html
+<a href="https://modrinth.com/mod/retromod"><img alt="Translated with RetroMod" height="56" src="https://img.shields.io/badge/Translated_with-RetroMod-blue?style=for-the-badge"></a>
+```
+
 ## License
 
 [MIT License](LICENSE) — Copyright (c) 2026 RevivalSMP

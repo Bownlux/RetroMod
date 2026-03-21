@@ -266,24 +266,25 @@ public class Fabric_1_21_11_to_26_1 implements VersionShim {
             "Lnet/minecraft/client/gui/components/Button$CreateNarration;"
         );
 
-        // TranslatableContents → MutableComponent class redirect.
-        // In old MC, TranslatableText/TranslatableComponent (class_2588) was a Component subclass.
-        // In 26.1, class_2588 maps to TranslatableContents which is NOT a Component.
-        // Old mods do `message instanceof TranslatableText` which becomes
-        // `message instanceof TranslatableContents` → always false.
-        // By redirecting to MutableComponent, `instanceof` works (MutableComponent IS Component).
-        // We also add a getKey() bridge since MutableComponent doesn't have getKey().
-        transformer.registerClassRedirect(
+        // TranslatableContents constructor redirect.
+        // Old mods call `new TranslatableContents("key")` or `new TranslatableText("key")`.
+        // In 26.1, TranslatableContents(String) constructor was removed — now requires
+        // TranslatableContents(String key, String fallback, Object[] args).
+        // Redirect to a factory that calls the 3-arg constructor.
+        // NOTE: We do NOT redirect the class itself (TranslatableContents → MutableComponent)
+        // because that breaks constructor calls. The class stays as TranslatableContents.
+        transformer.registerConstructorRedirect(
             "net/minecraft/network/chat/contents/TranslatableContents",
-            "net/minecraft/network/chat/MutableComponent"
+            "(Ljava/lang/String;)V",
+            "com/retromod/polyfill/minecraft/text/embedded/TranslatableContentsShim", "create",
+            "(Ljava/lang/String;)Ljava/lang/Object;"
         );
-        // Bridge: MutableComponent.getKey() → extract key from contents
-        transformer.registerMethodRedirect(
-            "net/minecraft/network/chat/MutableComponent", "getKey",
-            "()Ljava/lang/String;",
-            "com/retromod/shim/fabric/embedded/ItemSafetyShim", "getTranslationKey",
-            "(Ljava/lang/Object;)Ljava/lang/String;",
-            true  // devirtualize
+        // Also redirect the 2-arg constructor: TranslatableContents(String, Object[])
+        transformer.registerConstructorRedirect(
+            "net/minecraft/network/chat/contents/TranslatableContents",
+            "(Ljava/lang/String;[Ljava/lang/Object;)V",
+            "com/retromod/polyfill/minecraft/text/embedded/TranslatableContentsShim", "createWithArgs",
+            "(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/Object;"
         );
 
         // --- Window: getWindow() → handle() ---
@@ -520,6 +521,19 @@ public class Fabric_1_21_11_to_26_1 implements VersionShim {
             "Lnet/minecraft/world/entity/EntityType;",
             "net/minecraft/world/entity/EntityType", "OAK_CHEST_BOAT",
             "Lnet/minecraft/world/entity/EntityType;"
+        );
+
+        // ============================================================
+        // ITEM TOOLTIP CALLBACK — redirect EVENT field to dummy event
+        // ============================================================
+        // ItemTooltipCallback.getTooltip changed from 3 to 4 params in 26.1.
+        // Old mods register lambdas with 3 params → AbstractMethodError when hovering.
+        // Use field-to-method redirect: GETSTATIC EVENT → INVOKESTATIC getDummyTooltipEvent()
+        transformer.registerFieldRedirect(
+            "net/fabricmc/fabric/api/client/item/v1/ItemTooltipCallback", "EVENT",
+            "Lnet/fabricmc/fabric/api/event/Event;",
+            "com/retromod/shim/fabric/embedded/ItemSafetyShim", "getDummyTooltipEvent",
+            "()Lnet/fabricmc/fabric/api/event/Event;"
         );
 
         // ============================================================

@@ -148,6 +148,20 @@ public class ItemSafetyShim {
     }
 
     // ================================================================
+    // Item tooltip dummy — prevents AbstractMethodError on hover
+    // ================================================================
+
+    /**
+     * Returns a dummy Event for ItemTooltipCallback.
+     * Replaces GETSTATIC ItemTooltipCallback.EVENT via field-to-method redirect.
+     * The dummy event accepts .register() and .addPhaseOrdering() calls
+     * but never fires, so old mods with 3-param getTooltip lambdas don't crash.
+     */
+    public static Object getDummyTooltipEvent() {
+        return getDummyEvent("net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback");
+    }
+
+    // ================================================================
     // Screen mouse event dummy — prevents AbstractMethodError on click
     // ================================================================
 
