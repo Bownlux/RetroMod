@@ -94,6 +94,24 @@ public class ItemSafetyShim {
     }
 
     /**
+     * No-op for removed void methods with no params (devirtualized).
+     * Used for e.g. VertexConsumer.endVertex() which auto-ends in 26.1.
+     */
+    public static void noOpVoid(Object instance) {
+        // Intentionally empty — method was removed in 26.1
+    }
+
+    /** No-op for removed static void methods (e.g., RenderSystem.enableBlend). */
+    public static void noOpStatic() {
+        // Intentionally empty
+    }
+
+    /** No-op for removed RenderSystem.setShaderColor(float, float, float, float). */
+    public static void noOpColor(float r, float g, float b, float a) {
+        // Intentionally empty — rendering is now pipeline-based
+    }
+
+    /**
      * Bridge for TranslatableText.getKey() / TranslatableContents.getKey().
      * In old MC, TranslatableText was a Component with getKey().
      * In 26.1, the key is inside TranslatableContents (accessed via getContents()).

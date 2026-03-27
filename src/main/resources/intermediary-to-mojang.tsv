@@ -87337,3 +87337,10 @@ METHOD	method_32522	create
 METHOD	method_32526	forOptionEnum
 METHOD	method_25307	setScrollAmount
 METHOD	method_25318	mouseScrolled
+CLASS	net/minecraft/class_4535	com/mojang/blaze3d/platform/GlStateManager$SourceFactor
+CLASS	net/minecraft/class_4534	com/mojang/blaze3d/platform/GlStateManager$DestFactor
+FIELD	field_24366	text
+FIELD	field_22735	itemRenderer
+FIELD	field_2054	EMPTY
+FIELD	field_2218	TUTORIAL_HINT
+METHOD	method_25317	getItemCount

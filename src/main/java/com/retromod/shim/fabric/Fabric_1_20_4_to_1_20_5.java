@@ -106,6 +106,15 @@ public class Fabric_1_20_4_to_1_20_5 implements VersionShim {
             "net/minecraft/client/gui/screens/Screen", "renderMenuBackground",
             "()V"
         );
+        // BlockEntity.load() renamed to loadAdditional() in 1.20.5
+        // NOTE: In 1.20.5 the descriptor added HolderLookup.Provider param.
+        // This redirect covers the old single-param CompoundTag version.
+        transformer.registerMethodRedirect(
+            "net/minecraft/world/level/block/entity/BlockEntity", "load",
+            "(Lnet/minecraft/nbt/CompoundTag;)V",
+            "net/minecraft/world/level/block/entity/BlockEntity", "loadAdditional",
+            "(Lnet/minecraft/nbt/CompoundTag;)V"
+        );
     }
 
     @Override

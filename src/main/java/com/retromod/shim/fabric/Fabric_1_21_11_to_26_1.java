@@ -293,6 +293,57 @@ public class Fabric_1_21_11_to_26_1 implements VersionShim {
             "()J"
         );
 
+        // --- Screen.render → Screen.extractRenderState ---
+        // In 26.1, Screen rendering was split into extract + render phases.
+        // Old mods override render(PoseStack/GuiGraphics, int, int, float).
+        // New: extractRenderState(GuiGraphicsExtractor, int, int, float)
+        // This redirect handles direct method CALLS (not overrides — those need mixin handling).
+        transformer.registerMethodRedirect(
+            "net/minecraft/client/gui/screens/Screen", "render",
+            "(Lnet/minecraft/client/gui/GuiGraphics;IIF)V",
+            "net/minecraft/client/gui/screens/Screen", "extractRenderState",
+            "(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V"
+        );
+
+        // AbstractContainerScreen.render → extractRenderState
+        transformer.registerMethodRedirect(
+            "net/minecraft/client/gui/screens/inventory/AbstractContainerScreen", "render",
+            "(Lnet/minecraft/client/gui/GuiGraphics;IIF)V",
+            "net/minecraft/client/gui/screens/inventory/AbstractContainerScreen", "extractRenderState",
+            "(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V"
+        );
+
+        // GuiGraphics class redirect → GuiGraphicsExtractor
+        transformer.registerClassRedirect(
+            "net/minecraft/client/gui/GuiGraphics",
+            "net/minecraft/client/gui/GuiGraphicsExtractor"
+        );
+
+        // Tesselator.getBuilder() → Tesselator.begin() — signature changed but name redirect helps
+        transformer.registerMethodRedirect(
+            "com/mojang/blaze3d/vertex/Tesselator", "getBuilder",
+            "()Lcom/mojang/blaze3d/vertex/BufferBuilder;",
+            "com/mojang/blaze3d/vertex/Tesselator", "begin",
+            "(Lcom/mojang/blaze3d/vertex/VertexFormat$Mode;Lcom/mojang/blaze3d/vertex/VertexFormat;)Lcom/mojang/blaze3d/vertex/BufferBuilder;"
+        );
+
+        // Tesselator.end() → Tesselator.clear()
+        transformer.registerMethodRedirect(
+            "com/mojang/blaze3d/vertex/Tesselator", "end",
+            "()V",
+            "com/mojang/blaze3d/vertex/Tesselator", "clear",
+            "()V"
+        );
+
+        // VertexConsumer.endVertex() → removed (auto-ends in 26.1, no-op)
+        transformer.registerMethodRedirect(
+            "com/mojang/blaze3d/vertex/VertexConsumer", "endVertex",
+            "()V",
+            "com/retromod/shim/fabric/embedded/ItemSafetyShim", "noOpVoid",
+            "(Ljava/lang/Object;)V",
+            true  // devirtualize
+        );
+
         // --- GUI/Screen renames ---
         transformer.registerClassRedirect(
             "net/fabricmc/fabric/api/client/rendering/v1/SpecialGuiElementRegistry",
@@ -657,7 +708,24 @@ public class Fabric_1_21_11_to_26_1 implements VersionShim {
             "(ILjava/lang/Object;)V"
         );
 
-        // RenderSystem.enableBlend() and disableBlend() still exist in 26.1 — no redirect needed.
+        // RenderSystem.enableBlend/disableBlend/enableDepthTest/disableDepthTest/setShaderColor
+        // ALL removed in 26.1. Rendering is now pipeline-based, not GL state machine.
+        for (String method : new String[]{"enableBlend", "disableBlend",
+                "enableDepthTest", "disableDepthTest", "defaultBlendFunc"}) {
+            transformer.registerMethodRedirect(
+                "com/mojang/blaze3d/systems/RenderSystem", method,
+                "()V",
+                "com/retromod/shim/fabric/embedded/ItemSafetyShim", "noOpStatic",
+                "()V"
+            );
+        }
+        // setShaderColor(float, float, float, float) → no-op
+        transformer.registerMethodRedirect(
+            "com/mojang/blaze3d/systems/RenderSystem", "setShaderColor",
+            "(FFFF)V",
+            "com/retromod/shim/fabric/embedded/ItemSafetyShim", "noOpColor",
+            "(FFFF)V"
+        );
 
         // AbstractContainerScreen.slotClicked: descriptor changed in 26.1
         // Old: slotClicked(Slot, int, int, ClickAction)V

@@ -63,6 +63,9 @@ public class ModScorer {
     private final Set<String> mcClasses = new HashSet<>(8000);
     private final Map<String, Set<String>> mcMethods = new HashMap<>(8000);  // class -> set of "name desc"
     private final Map<String, Set<String>> mcFields = new HashMap<>(8000);   // class -> set of "name"
+    // Class hierarchy: class -> superclass (for walking inheritance chain)
+    private final Map<String, String> mcSuperclasses = new HashMap<>(8000);
+    private final Map<String, String[]> mcInterfaces = new HashMap<>(8000);
 
     // --- Redirects from RetroMod shims/polyfills ---
     private final Map<MethodKey, MethodTarget> methodRedirects;
@@ -149,6 +152,9 @@ public class ModScorer {
                                 String superName, String[] interfaces) {
                             currentClass[0] = name;
                             mcClasses.add(name);
+                            // Track hierarchy for method resolution
+                            if (superName != null) mcSuperclasses.put(name, superName);
+                            if (interfaces != null) mcInterfaces.put(name, interfaces);
                         }
                         @Override
                         public MethodVisitor visitMethod(int access, String name, String desc,
@@ -371,17 +377,10 @@ public class ModScorer {
             for (String nameDesc : entry.getValue()) {
                 totalMethods++;
 
-                // Check if the method exists in MC
+                // Check if the method exists in MC (walk class hierarchy)
                 String resolvedOwner = classRedirects.getOrDefault(owner, owner);
-                Set<String> existingMethods = mcMethods.get(resolvedOwner);
-                if (existingMethods != null && existingMethods.contains(nameDesc)) {
-                    resolvableMethods++;
-                    continue;
-                }
-
-                // Also check the original owner (in case class redirect is wrong)
-                existingMethods = mcMethods.get(owner);
-                if (existingMethods != null && existingMethods.contains(nameDesc)) {
+                if (isMethodInHierarchy(resolvedOwner, nameDesc)
+                        || isMethodInHierarchy(owner, nameDesc)) {
                     resolvableMethods++;
                     continue;
                 }
@@ -428,15 +427,10 @@ public class ModScorer {
             for (String fieldName : entry.getValue()) {
                 totalFields++;
 
+                // Check if field exists (walk class hierarchy)
                 String resolvedOwner = classRedirects.getOrDefault(owner, owner);
-                Set<String> existingFields = mcFields.get(resolvedOwner);
-                if (existingFields != null && existingFields.contains(fieldName)) {
-                    resolvableFields++;
-                    continue;
-                }
-
-                existingFields = mcFields.get(owner);
-                if (existingFields != null && existingFields.contains(fieldName)) {
+                if (isFieldInHierarchy(resolvedOwner, fieldName)
+                        || isFieldInHierarchy(owner, fieldName)) {
                     resolvableFields++;
                     continue;
                 }
@@ -982,6 +976,47 @@ public class ModScorer {
             si = ei + 1;
         }
         return result;
+    }
+
+    /**
+     * Check if a method exists in the class or any of its superclasses/interfaces.
+     * Walks up the inheritance chain to find inherited methods.
+     */
+    private boolean isMethodInHierarchy(String className, String nameDesc) {
+        Set<String> visited = new HashSet<>();
+        String current = className;
+        while (current != null && visited.add(current)) {
+            Set<String> methods = mcMethods.get(current);
+            if (methods != null && methods.contains(nameDesc)) {
+                return true;
+            }
+            // Check interfaces
+            String[] ifaces = mcInterfaces.get(current);
+            if (ifaces != null) {
+                for (String iface : ifaces) {
+                    if (isMethodInHierarchy(iface, nameDesc)) return true;
+                }
+            }
+            // Walk up to superclass
+            current = mcSuperclasses.get(current);
+        }
+        return false;
+    }
+
+    /**
+     * Check if a field exists in the class or any of its superclasses.
+     */
+    private boolean isFieldInHierarchy(String className, String fieldName) {
+        Set<String> visited = new HashSet<>();
+        String current = className;
+        while (current != null && visited.add(current)) {
+            Set<String> fields = mcFields.get(current);
+            if (fields != null && fields.contains(fieldName)) {
+                return true;
+            }
+            current = mcSuperclasses.get(current);
+        }
+        return false;
     }
 
     private boolean isModInternal(String className, Set<String> modClasses) {
