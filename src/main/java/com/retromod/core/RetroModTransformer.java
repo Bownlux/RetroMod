@@ -127,6 +127,15 @@ public class RetroModTransformer implements ClassFileTransformer {
     private final Map<String, byte[]> syntheticClasses = new ConcurrentHashMap<>();
 
     // ═══════════════════════════════════════════════════════════════════════
+    // FUZZY RESOLVER — last-resort fallback for unresolved references
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // The fuzzy resolver indexes the target MC JAR and scores candidate methods/fields
+    // when no hardcoded redirect is found. It will NEVER override a hardcoded redirect.
+    // Initialized lazily via initFuzzyResolver() — volatile for thread-safe publication.
+    private volatile FuzzyMethodResolver fuzzyResolver;
+
+    // ═══════════════════════════════════════════════════════════════════════
     // PERFORMANCE OPTIMIZATIONS
     // ═══════════════════════════════════════════════════════════════════════
 
@@ -148,7 +157,49 @@ public class RetroModTransformer implements ClassFileTransformer {
     public static RetroModTransformer getInstance() {
         return INSTANCE;
     }
-    
+
+    /**
+     * Initialize the fuzzy method/field resolver with the target MC JAR.
+     * The resolver indexes all classes, methods, and fields in the JAR so it can
+     * fuzzy-match unresolved references during bytecode transformation.
+     *
+     * <p>This is a FALLBACK mechanism — hardcoded redirects registered by shims
+     * always take priority. Call this once during startup after shims are loaded.</p>
+     *
+     * @param mcJarPath path to the Minecraft client JAR, or null to auto-detect
+     */
+    public void initFuzzyResolver(java.nio.file.Path mcJarPath) {
+        try {
+            // Auto-detect if no path provided
+            if (mcJarPath == null) {
+                mcJarPath = FuzzyMethodResolver.findMcJarFromClasspath();
+            }
+            if (mcJarPath == null) {
+                LOGGER.info("MC JAR not found on classpath, fuzzy resolver disabled");
+                return;
+            }
+
+            FuzzyMethodResolver resolver = new FuzzyMethodResolver();
+            resolver.indexJar(mcJarPath);
+            if (resolver.isIndexed()) {
+                this.fuzzyResolver = resolver;
+                LOGGER.info("Fuzzy resolver initialized: {} classes, {} methods, {} fields",
+                        resolver.getIndexedClassCount(),
+                        resolver.getIndexedMethodCount(),
+                        resolver.getIndexedFieldCount());
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Could not initialize fuzzy resolver: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Get the fuzzy resolver instance, or null if not initialized.
+     */
+    public FuzzyMethodResolver getFuzzyResolver() {
+        return fuzzyResolver;
+    }
+
     /**
      * Register a method redirect.
      * When legacy code calls oldOwner.oldName(oldDesc), 
@@ -677,7 +728,8 @@ public class RetroModTransformer implements ClassFileTransformer {
         "com/mojang/serialization/DataResult",
         "com/mojang/serialization/DynamicOps",
         "com/mojang/serialization/MapLike",
-        "com/mojang/serialization/Lifecycle"
+        "com/mojang/serialization/Lifecycle",
+        "net/minecraft/core/Registry"  // Registry became interface in newer MC
     );
 
     private class RetroModClassVisitor extends ClassVisitor {
@@ -1029,8 +1081,29 @@ public class RetroModTransformer implements ClassFileTransformer {
                 }
             }
 
-            // OPTIMIZATION: Fast path - skip if owner not in our redirect set
+            // OPTIMIZATION: Fast path - skip if owner not in our redirect set.
+            // But still try fuzzy resolution for unresolved references on fast-path
+            // classes, since the fuzzy resolver indexes the entire MC JAR.
             if (!methodRedirectOwners.contains(owner)) {
+                // Try fuzzy resolution if available (only for MC classes)
+                FuzzyMethodResolver resolver = fuzzyResolver;
+                if (resolver != null && resolver.isIndexed()
+                        && (owner.startsWith("net/minecraft/") || owner.startsWith("com/mojang/"))) {
+                    FuzzyMethodResolver.MethodInfo fuzzyMatch =
+                            resolver.resolveMethod(owner, name, descriptor);
+                    if (fuzzyMatch != null) {
+                        LOGGER.info("[RetroMod-Fuzzy] Resolved {}.{}{} -> {}.{}{} (confidence: {}%)",
+                                owner, name, descriptor,
+                                fuzzyMatch.owner(), fuzzyMatch.name(), fuzzyMatch.descriptor(),
+                                fuzzyMatch.score());
+                        int fuzzyOpcode = fixClassToInterfaceOpcode(opcode, fuzzyMatch.owner());
+                        boolean fuzzyIsInterface = fuzzyOpcode == Opcodes.INVOKEINTERFACE || isInterface;
+                        super.visitMethodInsn(fuzzyOpcode, fuzzyMatch.owner(), fuzzyMatch.name(),
+                                fuzzyMatch.descriptor(), fuzzyIsInterface);
+                        return;
+                    }
+                }
+
                 // Still fix class→interface opcode even on fast path
                 int fixedOpcode = fixClassToInterfaceOpcode(opcode, owner);
                 boolean fixedIsInterface = fixedOpcode == Opcodes.INVOKEINTERFACE || isInterface;
@@ -1084,7 +1157,29 @@ public class RetroModTransformer implements ClassFileTransformer {
                     }
                 }
             } else {
-                // No redirect, pass through — but fix class→interface opcode if needed
+                // No hardcoded redirect found — try fuzzy resolver as last resort.
+                // The fuzzy resolver scans the target MC JAR to find probable matches
+                // based on class, name similarity, and parameter type matching.
+                // It will NEVER override a hardcoded redirect (we only get here if none matched).
+                FuzzyMethodResolver resolver = fuzzyResolver;
+                if (resolver != null && resolver.isIndexed()) {
+                    FuzzyMethodResolver.MethodInfo fuzzyMatch =
+                            resolver.resolveMethod(owner, name, descriptor);
+                    if (fuzzyMatch != null) {
+                        // Fuzzy match found with confidence >= 70% — apply the redirect
+                        LOGGER.info("[RetroMod-Fuzzy] Resolved {}.{}{} -> {}.{}{} (confidence: {}%)",
+                                owner, name, descriptor,
+                                fuzzyMatch.owner(), fuzzyMatch.name(), fuzzyMatch.descriptor(),
+                                fuzzyMatch.score());
+                        int fuzzyOpcode = fixClassToInterfaceOpcode(opcode, fuzzyMatch.owner());
+                        boolean fuzzyIsInterface = fuzzyOpcode == Opcodes.INVOKEINTERFACE || isInterface;
+                        super.visitMethodInsn(fuzzyOpcode, fuzzyMatch.owner(), fuzzyMatch.name(),
+                                fuzzyMatch.descriptor(), fuzzyIsInterface);
+                        return;
+                    }
+                }
+
+                // No redirect and no fuzzy match — pass through with opcode fixup
                 int fixedOpcode = fixClassToInterfaceOpcode(opcode, owner);
                 // For KNOWN_INTERFACES (classes that became interfaces like DataResult):
                 // - INVOKEVIRTUAL → INVOKEINTERFACE (handled by fixClassToInterfaceOpcode)
@@ -1165,6 +1260,23 @@ public class RetroModTransformer implements ClassFileTransformer {
                     super.visitFieldInsn(opcode, target.owner, target.name, newDescriptor);
                 }
             } else {
+                // No hardcoded field redirect — try fuzzy resolver as last resort.
+                FuzzyMethodResolver resolver = fuzzyResolver;
+                if (resolver != null && resolver.isIndexed()) {
+                    FuzzyMethodResolver.FieldInfo fuzzyMatch =
+                            resolver.resolveField(owner, name, descriptor);
+                    if (fuzzyMatch != null) {
+                        LOGGER.info("[RetroMod-Fuzzy] Resolved field {}.{} {} -> {}.{} {} (confidence: {}%)",
+                                owner, name, descriptor,
+                                fuzzyMatch.owner(), fuzzyMatch.name(), fuzzyMatch.descriptor(),
+                                fuzzyMatch.score());
+                        super.visitFieldInsn(opcode, fuzzyMatch.owner(), fuzzyMatch.name(),
+                                fuzzyMatch.descriptor());
+                        return;
+                    }
+                }
+
+                // No redirect and no fuzzy match — pass through unchanged
                 super.visitFieldInsn(opcode, owner, name, descriptor);
             }
         }

@@ -540,13 +540,110 @@ public class FabricModTransformer {
                         Files.write(classFile, transformed);
                         count++;
                     }
+
+                    // Post-processing: inject missing abstract methods for Button subclasses.
+                    // In MC 26.1, AbstractButton added extractContents(GuiGraphicsExtractor, int, int, float)V
+                    // as abstract. Old mods that extend Button/AbstractButton don't implement it,
+                    // causing AbstractMethodError at runtime.
+                    byte[] current = (transformed != null && transformed != original) ? transformed : original;
+                    byte[] patched = injectMissingAbstractMethods(current, className);
+                    if (patched != null && patched != current) {
+                        Files.write(classFile, patched);
+                        if (transformed == null || transformed == original) count++;
+                    }
                 } catch (Exception e) {
                     LOGGER.debug("Could not transform class: {}", classFile.getFileName());
                 }
             }
         }
-        
+
         return count;
+    }
+
+    /**
+     * Inject missing abstract methods for classes that extend Button or AbstractButton.
+     *
+     * In MC 26.1, AbstractButton gained a new abstract method:
+     *   extractContents(GuiGraphicsExtractor, int, int, float)V
+     *
+     * Old mod widgets (e.g., ModMenu's ModMenuButtonWidget) that extend Button don't
+     * implement this method, causing AbstractMethodError when the game tries to call it.
+     *
+     * This injects a no-op implementation: { return; }
+     */
+    private byte[] injectMissingAbstractMethods(byte[] classBytes, String className) {
+        try {
+            ClassReader reader = new ClassReader(classBytes);
+            // Quick check: does this class extend Button or AbstractButton?
+            String superName = reader.getSuperName();
+            if (superName == null) return null;
+
+            // Check for Button and AbstractButton class hierarchies
+            // Mojang names used in 26.1 (no obfuscation)
+            Set<String> buttonSuperclasses = Set.of(
+                "net/minecraft/client/gui/components/Button",
+                "net/minecraft/client/gui/components/AbstractButton",
+                "net/minecraft/client/gui/components/AbstractWidget"
+            );
+
+            if (!buttonSuperclasses.contains(superName)) {
+                return null;
+            }
+
+            // Parse the class to check for existing extractContents method
+            ClassNode classNode = new ClassNode();
+            reader.accept(classNode, 0);
+
+            // The method signature for extractContents in 26.1:
+            // void extractContents(GuiGraphicsExtractor extractor, int mouseX, int mouseY, float partialTick)
+            // Descriptor: (Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V
+            // Also check alternative descriptor forms since the class might have been remapped
+            String methodName = "extractContents";
+            String methodDesc = "(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IIF)V";
+
+            // Check if extractContents already exists
+            boolean hasMethod = false;
+            for (MethodNode method : classNode.methods) {
+                if (method.name.equals(methodName)) {
+                    hasMethod = true;
+                    break;
+                }
+            }
+
+            if (hasMethod) {
+                return null; // already has the method
+            }
+
+            // Inject a no-op implementation (can't call super — it's abstract):
+            //   public void extractContents(GuiGraphicsExtractor g, int x, int y, float t) {
+            //       // no-op — old mod doesn't know about this method
+            //   }
+            MethodNode newMethod = new MethodNode(
+                Opcodes.ACC_PUBLIC,
+                methodName,
+                methodDesc,
+                null,
+                null
+            );
+
+            // Generate bytecode: just return immediately
+            newMethod.instructions = new InsnList();
+            newMethod.instructions.add(new InsnNode(Opcodes.RETURN));
+            newMethod.maxStack = 0;
+            newMethod.maxLocals = 5;
+
+            classNode.methods.add(newMethod);
+
+            // Write the modified class
+            ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+            classNode.accept(writer);
+            byte[] result = writer.toByteArray();
+            LOGGER.info("Injected missing extractContents() into {} (extends {})", className, superName);
+            return result;
+        } catch (Exception e) {
+            LOGGER.debug("Could not inject abstract methods into {}: {}", className, e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -808,11 +905,14 @@ public class FabricModTransformer {
         try (var stream = Files.walk(dir)) {
             for (Path file : stream.filter(Files::isRegularFile).toList()) {
                 String name = file.getFileName().toString();
+                String entryPath = dir.relativize(file).toString()
+                    .replace(File.separator, "/");
 
-                if (name.endsWith(".accesswidener") || name.endsWith(".classtweaker")) {
+                String nameLower = name.toLowerCase(java.util.Locale.ROOT);
+                if (nameLower.endsWith(".accesswidener") || nameLower.endsWith(".classtweaker")) {
                     remapAccessWidener(file, mapper);
                     remappedFiles++;
-                } else if (name.endsWith(".mixins.json") || name.equals("mixins.json")) {
+                } else if (isMixinConfigFile(entryPath)) {
                     remapMixinConfig(file, mapper);
                     remappedFiles++;
                 } else if (name.endsWith("-refmap.json") || name.contains("refmap")) {
@@ -884,9 +984,13 @@ public class FabricModTransformer {
             String content = Files.readString(configFile);
             // Remap any intermediary class references in the config
             String remapped = mapper.remapString(content);
+            // Also make the mixin config non-fatal: set required=false and defaultRequire=0.
+            // This prevents broken mixins (CommandKeys, Lithium, FerriteCore, etc.) from
+            // crashing the game. Instead they log warnings and the game continues.
+            remapped = makeMixinConfigNonFatal(remapped);
             if (!remapped.equals(content)) {
                 Files.writeString(configFile, remapped);
-                LOGGER.debug("  Remapped mixin config: {}", configFile.getFileName());
+                LOGGER.debug("  Remapped mixin config (non-fatal): {}", configFile.getFileName());
             }
         } catch (Exception e) {
             LOGGER.warn("Failed to remap mixin config {}: {}", configFile.getFileName(), e.getMessage());
@@ -994,6 +1098,8 @@ public class FabricModTransformer {
 
     /**
      * Remap a nested JAR (Jar-in-Jar) by extracting, remapping, and repacking.
+     * Also applies MixinCompatibilityTransformer to strip broken mixin entries
+     * (fixes ExtraSounds/SoundCategories VerifyError from corrupted mixin bytecode).
      */
     private void remapNestedJar(Path jarFile,
                                  com.retromod.mapping.IntermediaryToMojangMapper mapper) {
@@ -1008,15 +1114,41 @@ public class FabricModTransformer {
 
                 // Recursively remap intermediary names in metadata
                 int remapped = 0;
+                // Build class lookup once for mixin stripping in this nested JAR
+                Map<String, byte[]> nestedClassLookup = null;
+
                 try (var stream = Files.walk(tempDir)) {
                     for (Path file : stream.filter(Files::isRegularFile).toList()) {
                         String name = file.getFileName().toString();
+                        String entryPath = tempDir.relativize(file).toString()
+                            .replace(File.separator, "/");
 
-                        if (name.endsWith(".accesswidener") || name.endsWith(".classtweaker")) {
+                        String nameLower = name.toLowerCase(java.util.Locale.ROOT);
+                        if (nameLower.endsWith(".accesswidener") || nameLower.endsWith(".classtweaker")) {
                             remapAccessWidener(file, mapper);
                             remapped++;
-                        } else if (name.endsWith(".mixins.json") || name.equals("mixins.json")) {
+                        } else if (isMixinConfigFile(entryPath)) {
+                            // First: remap intermediary names
                             remapMixinConfig(file, mapper);
+                            // Second: strip broken mixin entries using MixinCompatibilityTransformer
+                            // This fixes nested JARs like ExtraSounds' soundcategories where
+                            // mixin bytecode gets corrupted by the fuzzy matcher or redirects
+                            try {
+                                String json = Files.readString(file);
+                                if (nestedClassLookup == null) {
+                                    nestedClassLookup = buildClassLookup(tempDir);
+                                }
+                                MixinCompatibilityTransformer mixinTransformer =
+                                    new MixinCompatibilityTransformer(RetroModTransformer.getInstance());
+                                String transformed = mixinTransformer.transformMixinConfig(json, nestedClassLookup);
+                                // makeMixinConfigNonFatal is already called by remapMixinConfig above,
+                                // but call it again on the stripped version to be safe
+                                transformed = makeMixinConfigNonFatal(transformed);
+                                Files.writeString(file, transformed, java.nio.charset.StandardCharsets.UTF_8);
+                                LOGGER.debug("  Stripped broken mixins in nested JAR config: {}", entryPath);
+                            } catch (Exception e) {
+                                LOGGER.debug("Could not strip mixins in nested JAR config {}: {}", entryPath, e.getMessage());
+                            }
                             remapped++;
                         } else if (name.endsWith("-refmap.json") || name.contains("refmap")) {
                             remapRefmap(file, mapper);

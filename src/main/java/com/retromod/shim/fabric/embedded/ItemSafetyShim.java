@@ -106,6 +106,35 @@ public class ItemSafetyShim {
         // Intentionally empty
     }
 
+    /**
+     * Bridge for Util.backgroundExecutor() which was removed in 26.1.
+     * Returns a simple cached thread pool so mods can still submit async tasks.
+     */
+    public static java.util.concurrent.ExecutorService getBackgroundExecutor() {
+        return java.util.concurrent.Executors.newCachedThreadPool();
+    }
+
+    /**
+     * Bridge for TitleScreen.COPYRIGHT_TEXT which became private in 26.1.
+     * Uses reflection to access the private static final field.
+     */
+    public static Object getTitleScreenCopyright() {
+        try {
+            Class<?> titleScreenClass = Class.forName("net.minecraft.client.gui.screens.TitleScreen");
+            java.lang.reflect.Field field = titleScreenClass.getDeclaredField("COPYRIGHT_TEXT");
+            field.setAccessible(true);
+            return field.get(null);
+        } catch (Exception e) {
+            // Fallback: return empty component
+            try {
+                Class<?> componentClass = Class.forName("net.minecraft.network.chat.Component");
+                return componentClass.getMethod("empty").invoke(null);
+            } catch (Exception e2) {
+                return null;
+            }
+        }
+    }
+
     /** No-op for removed RenderSystem.setShaderColor(float, float, float, float). */
     public static void noOpColor(float r, float g, float b, float a) {
         // Intentionally empty — rendering is now pipeline-based

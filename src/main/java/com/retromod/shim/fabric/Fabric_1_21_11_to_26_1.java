@@ -344,6 +344,49 @@ public class Fabric_1_21_11_to_26_1 implements VersionShim {
             true  // devirtualize
         );
 
+        // SoundEvent constructor removed — use factory method
+        // Old: new SoundEvent(Identifier) → New: SoundEvent.createVariableRangeEvent(Identifier)
+        transformer.registerConstructorRedirect(
+            "net/minecraft/sounds/SoundEvent",
+            "(Lnet/minecraft/resources/Identifier;)V",
+            "net/minecraft/sounds/SoundEvent", "createVariableRangeEvent",
+            "(Lnet/minecraft/resources/Identifier;)Lnet/minecraft/sounds/SoundEvent;"
+        );
+
+        // Window.window field renamed to Window.handle in 26.1
+        transformer.registerFieldRedirect(
+            "com/mojang/blaze3d/platform/Window", "window",
+            "J",
+            "com/mojang/blaze3d/platform/Window", "handle",
+            "J"
+        );
+
+        // Util.backgroundExecutor() removed — redirect to no-op that returns a simple executor
+        // Mods use this for async tasks. In 26.1 the field is private with no getter.
+        transformer.registerMethodRedirect(
+            "net/minecraft/util/Util", "backgroundExecutor",
+            "()Ljava/util/concurrent/ExecutorService;",
+            "com/retromod/shim/fabric/embedded/ItemSafetyShim", "getBackgroundExecutor",
+            "()Ljava/util/concurrent/ExecutorService;"
+        );
+
+        // Registry.SOUND_EVENT moved to Registries.SOUND_EVENT in newer MC
+        // The field type also changed from Registry to ResourceKey<Registry<SoundEvent>>
+        transformer.registerFieldRedirect(
+            "net/minecraft/core/Registry", "SOUND_EVENT",
+            "Lnet/minecraft/core/Registry;",
+            "net/minecraft/core/registries/Registries", "SOUND_EVENT",
+            "Lnet/minecraft/resources/ResourceKey;"
+        );
+
+        // TitleScreen.COPYRIGHT_TEXT became private in 26.1 — redirect to reflection bridge
+        transformer.registerFieldRedirect(
+            "net/minecraft/client/gui/screens/TitleScreen", "COPYRIGHT_TEXT",
+            "Lnet/minecraft/network/chat/Component;",
+            "com/retromod/shim/fabric/embedded/ItemSafetyShim", "getTitleScreenCopyright",
+            "()Ljava/lang/Object;"
+        );
+
         // --- GUI/Screen renames ---
         transformer.registerClassRedirect(
             "net/fabricmc/fabric/api/client/rendering/v1/SpecialGuiElementRegistry",
@@ -593,37 +636,14 @@ public class Fabric_1_21_11_to_26_1 implements VersionShim {
         // Instead, we only redirect the specific ScreenMouseEvents methods
         // that return Events with changed callback signatures.
 
-        // ScreenMouseEvents: allowMouseClick/allowMouseRelease API changed
-        // Old: allowMouseClick(Screen, double x, double y, int button) -> boolean
-        // New: allowMouseClick(Screen, MouseButtonEvent) -> boolean
-        // Old mods register lambdas with old signature → AbstractMethodError on every click.
-        // Redirect to dummy events that accept registrations but never fire.
-        transformer.registerMethodRedirect(
-            "net/fabricmc/fabric/api/client/screen/v1/ScreenMouseEvents", "allowMouseClick",
-            "(Lnet/minecraft/client/gui/screens/Screen;)Lnet/fabricmc/fabric/api/event/Event;",
-            "com/retromod/shim/fabric/embedded/ItemSafetyShim", "dummyAllowMouseClick",
-            "(Ljava/lang/Object;)Ljava/lang/Object;"
-        );
-        transformer.registerMethodRedirect(
-            "net/fabricmc/fabric/api/client/screen/v1/ScreenMouseEvents", "allowMouseRelease",
-            "(Lnet/minecraft/client/gui/screens/Screen;)Lnet/fabricmc/fabric/api/event/Event;",
-            "com/retromod/shim/fabric/embedded/ItemSafetyShim", "dummyAllowMouseRelease",
-            "(Ljava/lang/Object;)Ljava/lang/Object;"
-        );
-        // afterMouseScroll/beforeMouseScroll also changed signature in 26.1
-        // Each needs its OWN dummy event typed for the correct listener interface
-        transformer.registerMethodRedirect(
-            "net/fabricmc/fabric/api/client/screen/v1/ScreenMouseEvents", "afterMouseScroll",
-            "(Lnet/minecraft/client/gui/screens/Screen;)Lnet/fabricmc/fabric/api/event/Event;",
-            "com/retromod/shim/fabric/embedded/ItemSafetyShim", "dummyAfterMouseScroll",
-            "(Ljava/lang/Object;)Ljava/lang/Object;"
-        );
-        transformer.registerMethodRedirect(
-            "net/fabricmc/fabric/api/client/screen/v1/ScreenMouseEvents", "beforeMouseScroll",
-            "(Lnet/minecraft/client/gui/screens/Screen;)Lnet/fabricmc/fabric/api/event/Event;",
-            "com/retromod/shim/fabric/embedded/ItemSafetyShim", "dummyBeforeMouseScroll",
-            "(Ljava/lang/Object;)Ljava/lang/Object;"
-        );
+        // ScreenMouseEvents: allowMouseClick/allowMouseRelease/afterMouseScroll/beforeMouseScroll
+        // These callbacks changed signature in 26.1 (old: individual params, new: event object).
+        // Previously we redirected to dummy events, but the dummy shim returns Object which
+        // gets CHECKCAST'd to Event, causing VerifyError and crashing the game.
+        // By NOT redirecting, old mods get ArrayStoreException when registering their lambda
+        // with the wrong functional interface. ArrayStoreException is caught as non-fatal by
+        // Fabric's event system — much better than VerifyError which is always fatal.
+        // DO NOT re-add dummy redirects for these methods.
 
         // ============================================================
         // FONT TEXT RENDERING — draw/drawShadow removed in 26.1

@@ -254,6 +254,13 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
             } catch (Exception e) {
                 LOGGER.debug("No polyfill providers found");
             }
+            // Initialize fuzzy resolver — last-resort fallback for unresolved references.
+            // Auto-detects the MC JAR from the classpath (Fabric Loader always has it loaded).
+            try {
+                transformer.initFuzzyResolver(null);
+            } catch (Exception e) {
+                LOGGER.debug("Could not initialize fuzzy resolver: {}", e.getMessage());
+            }
         } catch (Exception e) {
             LOGGER.warn("Could not register shims for pre-launch transform: {}", e.getMessage());
         }
@@ -527,18 +534,11 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
                     com.retromod.gui.ModComplexityAnalyzer.ComplexityReport report =
                         analyzer.analyze(modJar);
 
-                    if (report.isUnlikelyToWork() && !forceComplex) {
-                        LOGGER.warn("│  ⚠ SKIPPED: Mod is unlikely to work (complexity score: {})", report.score());
+                    // Always transform — never skip based on complexity.
+                    // RetroMod should try its best with every mod, even complex ones.
+                    if (report.isUnlikelyToWork()) {
+                        LOGGER.warn("│  ⚠ High complexity (score: {}) — some features may not work", report.score());
                         LOGGER.warn("│  Reason: {}", report.reason());
-                        LOGGER.warn("│  To force, set \"force_translate_complex\": true in config.json");
-                        LOGGER.info("└─ Skipped (too complex)");
-                        skippedComplexMods.add(fileName);
-                        // DON'T move to processed — leave it for the user to decide
-                        continue;
-                    }
-
-                    if (report.isUnlikelyToWork() && forceComplex) {
-                        LOGGER.warn("│  ⚠ Force mode: proceeding despite high complexity ({})", report.score());
                     }
 
                     // ALWAYS transform unless EXACT match

@@ -245,22 +245,13 @@ public class RetroMod implements ModInitializer {
      * Deferred so the title screen has time to initialize first.
      */
     private void scheduleRestartScreen() {
-        Thread screenThread = new Thread(() -> {
-            // Wait for MC client to initialize (title screen must be up)
-            try {
-                Thread.sleep(3000);
-            } catch (InterruptedException ignored) {}
-
-            List<String> mods = RetroModPreLaunch.getTransformedMods();
-            List<String> results = new java.util.ArrayList<>();
-            for (String mod : mods) {
-                results.add(mod);
-            }
-
-            com.retromod.gui.InGameScreenFactory.showTransformResults(results, true);
-        }, "RetroMod-RestartScreen");
-        screenThread.setDaemon(true);
-        screenThread.start();
+        // No in-game popup — just log the restart message.
+        // The log already shows RESTART REQUIRED with the list of transformed mods.
+        // In-game screens cause issues with Fabric's screen API changes in newer versions.
+        List<String> mods = RetroModPreLaunch.getTransformedMods();
+        if (!mods.isEmpty()) {
+            LOGGER.info("Transformed {} mod(s) — restart to load them", mods.size());
+        }
     }
     
     /**
