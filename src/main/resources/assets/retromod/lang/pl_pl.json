@@ -1,0 +1,41 @@
+{
+  "retromod.title_screen.button": "RetroMod",
+  "retromod.title_screen.settings": "\u2699",
+
+  "retromod.main.title": "RetroMod",
+  "retromod.main.subtitle": "Upu\u015b\u0107 lub wybierz pliki JAR mod\u00f3w do przekszta\u0142cenia",
+  "retromod.main.add_mods": "Dodaj mody\u2026",
+  "retromod.main.open_folder": "Otw\u00f3rz folder mod\u00f3w",
+
+  "retromod.screen.title": "RetroMod - Mened\u017cer mod\u00f3w",
+  "retromod.screen.add_mods": "Dodaj mody do przekszta\u0142cenia",
+  "retromod.screen.full_aot": "Pe\u0142ny tryb AOT (wolniejsza kompilacja, szybsza gra)",
+  "retromod.screen.complexity_warning": "RetroMod nie przekszta\u0142ci\u0142 %s, poniewa\u017c prawdopodobnie nie zadzia\u0142a. W\u0142\u0105cz \"force_translate_complex\" w config/retromod/config.json, aby wymusi\u0107 przekszta\u0142cenie.",
+  "retromod.screen.transform_complete": "Przekszta\u0142cenie zako\u0144czone! Uruchom Minecraft ponownie, aby zastosowa\u0107 zmiany.",
+  "retromod.screen.no_mods": "Nie wybrano \u017cadnych mod\u00f3w.",
+  "retromod.screen.transforming": "Przekszta\u0142canie: %s",
+
+  "retromod.settings.title": "Ustawienia RetroMod",
+  "retromod.settings.done": "Gotowe",
+  "retromod.settings.add_mods": "Otw\u00f3rz folder mod\u00f3w",
+  "retromod.settings.on": "\u00a7aW\u0141.",
+  "retromod.settings.off": "\u00a7cWY\u0141.",
+
+  "retromod.settings.use_aot": "Kompilacja AOT",
+  "retromod.settings.use_hybrid": "Tryb hybrydowy",
+  "retromod.settings.transform_mixins": "Przekszta\u0142\u0107 Mixins",
+  "retromod.settings.transform_refmaps": "Przekszta\u0142\u0107 Refmaps",
+  "retromod.settings.remap_reflection": "Przemap\u0142uj refleksj\u0119",
+  "retromod.settings.polyfills_enabled": "Polyfills",
+  "retromod.settings.verify_transforms": "Weryfikuj przekszta\u0142cenia",
+  "retromod.settings.force_translate_complex": "Wymu\u015b z\u0142o\u017cone t\u0142umaczenie",
+  "retromod.settings.log_transformations": "Loguj przekszta\u0142cenia",
+  "retromod.settings.debug": "Tryb debugowania",
+
+  "retromod.filepicker.title": "RetroMod \u2014 Wybierz pliki JAR mod\u00f3w do przekszta\u0142cenia",
+
+  "retromod.result.success": "Przekszta\u0142cono",
+  "retromod.result.skipped": "Ju\u017c zgodne",
+  "retromod.result.failed": "Nieudane",
+  "retromod.result.complex_warning": "Ma\u0142o prawdopodobne, \u017ce zadzia\u0142a"
+}

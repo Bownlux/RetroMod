@@ -1,0 +1,59 @@
+{
+  "_comment": "Curated rename table for high-impact loader-API changes. v1 scope: cover the handful of renames that touch >10-20% of mods. Rare/obscure renames are deliberately out of scope until the gap report shows they're actually common. All names are JVM internal (slash-separated).",
+  "_version": 1,
+
+  "fabric": {
+    "_comment": "Fabric API's module reshuffles are mostly additive — few classes actually move. This table focuses on the handful of renames that caused widespread breakage.",
+    "renamed_classes": {
+      "net/fabricmc/fabric/api/server/PlayerStream": "net/fabricmc/fabric/api/networking/v1/PlayerLookup"
+    },
+    "renamed_methods": {
+    },
+    "removed_classes": [
+    ]
+  },
+
+  "neoforge": {
+    "_comment": "The big Forge -> NeoForge package-rename event of 2023. Virtually every Forge mod touches at least one of these.",
+    "renamed_classes": {
+      "net/minecraftforge/fml/common/Mod": "net/neoforged/fml/common/Mod",
+      "net/minecraftforge/fml/common/Mod$EventBusSubscriber": "net/neoforged/fml/common/EventBusSubscriber",
+      "net/minecraftforge/eventbus/api/IEventBus": "net/neoforged/bus/api/IEventBus",
+      "net/minecraftforge/eventbus/api/SubscribeEvent": "net/neoforged/bus/api/SubscribeEvent",
+      "net/minecraftforge/eventbus/api/Event": "net/neoforged/bus/api/Event",
+      "net/minecraftforge/registries/DeferredRegister": "net/neoforged/neoforge/registries/DeferredRegister",
+      "net/minecraftforge/registries/RegistryObject": "net/neoforged/neoforge/registries/DeferredHolder",
+      "net/minecraftforge/registries/ForgeRegistries": "net/neoforged/neoforge/registries/NeoForgeRegistries",
+      "net/minecraftforge/common/MinecraftForge": "net/neoforged/neoforge/common/NeoForge",
+      "net/minecraftforge/common/ForgeConfigSpec": "net/neoforged/neoforge/common/ModConfigSpec",
+      "net/minecraftforge/common/capabilities/Capability": "net/neoforged/neoforge/capabilities/Capabilities",
+      "net/minecraftforge/fml/ModLoadingContext": "net/neoforged/fml/ModLoadingContext",
+      "net/minecraftforge/fml/config/ModConfig": "net/neoforged/fml/config/ModConfig",
+      "net/minecraftforge/fml/javafmlmod/FMLJavaModLoadingContext": "net/neoforged/fml/javafmlmod/FMLJavaModLoadingContext",
+      "net/minecraftforge/network/NetworkRegistry": "net/neoforged/neoforge/network/registration/NetworkRegistry",
+      "net/minecraftforge/network/simple/SimpleChannel": "net/neoforged/neoforge/network/handling/IPayloadHandler",
+      "net/minecraftforge/event/RegistryEvent": "net/neoforged/neoforge/registries/RegisterEvent",
+      "net/minecraftforge/event/entity/EntityAttributeCreationEvent": "net/neoforged/neoforge/event/entity/EntityAttributeCreationEvent",
+      "net/minecraftforge/client/event/RegisterKeyMappingsEvent": "net/neoforged/neoforge/client/event/RegisterKeyMappingsEvent",
+      "net/minecraftforge/client/event/RenderGuiOverlayEvent": "net/neoforged/neoforge/client/event/RenderGuiLayerEvent",
+      "net/minecraftforge/client/gui/overlay/IGuiOverlay": "net/neoforged/neoforge/client/gui/IGuiLayer"
+    },
+    "renamed_methods": {
+    },
+    "removed_classes": [
+      "net/minecraftforge/common/capabilities/CapabilityManager",
+      "net/minecraftforge/common/capabilities/CapabilityInject",
+      "net/minecraftforge/common/capabilities/CapabilityProvider"
+    ]
+  },
+
+  "forge": {
+    "_comment": "Pre-NeoForge Forge renames during its own migration era. Forge is in maintenance mode on the project side, but Forge mods are still being translated.",
+    "renamed_classes": {
+    },
+    "renamed_methods": {
+    },
+    "removed_classes": [
+    ]
+  }
+}

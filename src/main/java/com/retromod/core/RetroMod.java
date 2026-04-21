@@ -119,6 +119,10 @@ public class RetroMod implements ModInitializer {
         // Log the full environment (OS, CPU arch, rendering backend)
         EnvironmentDetector.logEnvironment();
 
+        // Verify authenticity of this RetroMod build — informational only,
+        // never blocks. An unsigned or modified build still runs fine.
+        com.retromod.security.SignatureVerifier.verifyAndLog();
+
         // Load configuration
         loadConfig();
 
@@ -192,6 +196,33 @@ public class RetroMod implements ModInitializer {
             LOGGER.warn("Could not register polyfills", e);
         }
 
+        // Load auto-fix fixes from previous launch BEFORE transformation.
+        // These are fixes that the AutoFixEngine discovered by analyzing crash logs
+        // from a prior launch. They register redirects/patches so the next transform
+        // incorporates the fixes automatically.
+        //
+        // SECURITY: loadAndApplySavedFixes READS entries from
+        // config/retromod/auto-fixes.json and applies them unconditionally.
+        // The file itself was written by an earlier run of AutoFixEngine.
+        // If a malicious mod previously managed to get a redirect persisted
+        // (back when AutoFix was always-on), disabling AutoFix today would
+        // not remove those persisted entries — they'd still reload every
+        // launch. Gate the READ on the same -Dretromod.autoFix opt-in flag
+        // so that turning off AutoFix actually turns it all the way off.
+        boolean autoFixEnabled = Boolean.parseBoolean(
+                System.getProperty("retromod.autoFix", "false"));
+        if (autoFixEnabled) {
+            try {
+                AutoFixEngine autoFixEngine = new AutoFixEngine();
+                int savedFixes = autoFixEngine.loadAndApplySavedFixes(RetroModTransformer.getInstance());
+                if (savedFixes > 0) {
+                    LOGGER.info("AutoFix: loaded {} saved fix(es) from previous launch", savedFixes);
+                }
+            } catch (Exception e) {
+                LOGGER.warn("Could not load auto-fix saved fixes", e);
+            }
+        }
+
         // Initialize AOT compiler
         try {
             aotCompiler = new AotCompiler(shimRegistry, TARGET_MC_VERSION);
@@ -233,6 +264,49 @@ public class RetroMod implements ModInitializer {
             }
         } catch (Exception e) {
             LOGGER.warn("Could not show restart screen: {}", e.getMessage());
+        }
+
+        // Auto-fix: analyze the PREVIOUS launch's log for errors and prepare fixes.
+        // Scans latest.log for known crash patterns (NoSuchMethodError, VerifyError,
+        // mixin failures, etc.) and registers redirects so the NEXT retransformation
+        // incorporates them.
+        //
+        // SECURITY: latest.log is a shared file that *any* mod can write to via
+        // its own logger. A crafted log line that matches AutoFixEngine's
+        // error-pattern regex can cause RetroMod to register attacker-chosen
+        // method/field redirects into the shared transformer. The poisoned
+        // redirects are constrained to real MC methods (fuzzy resolver requires
+        // ≥85 match score against the indexed JAR), so this is not RCE — but
+        // one mod could deliberately mis-route another mod's bytecode rewrites.
+        //
+        // Mitigation: auto-fix is OPT-IN via -Dretromod.autoFix=true. Off by
+        // default. Users who want the convenience of auto-fix can enable it
+        // knowing the tradeoff. Each registered redirect is also logged at
+        // WARN so anomalies are visible even with the feature on.
+        // (autoFixEnabled was resolved once at the top of this method; reuse it.)
+        if (autoFixEnabled) {
+            try {
+                Path logFile = gameDir.resolve("logs/latest.log");
+                if (java.nio.file.Files.exists(logFile)) {
+                    AutoFixEngine autoFixEngine = new AutoFixEngine();
+                    List<AutoFixEngine.AppliedFix> fixes =
+                        autoFixEngine.analyzeAndFix(logFile, RetroModTransformer.getInstance());
+                    if (!fixes.isEmpty()) {
+                        LOGGER.warn("AutoFix: registered {} redirect(s) from previous log (opt-in feature). "
+                                + "Review each one — log lines are an attacker-writable surface:",
+                                fixes.size());
+                        for (AutoFixEngine.AppliedFix fix : fixes) {
+                            LOGGER.warn("  AutoFix [{}] {} => {}",
+                                    fix.errorType(), fix.description(), fix.action());
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.warn("Could not run auto-fix analysis: {}", e.getMessage());
+            }
+        } else {
+            LOGGER.debug("AutoFix disabled by default. Enable with -Dretromod.autoFix=true "
+                    + "(see security notes in RetroMod.java).");
         }
 
         LOGGER.info("RetroMod initialized - {} method redirects, {} class redirects registered",
@@ -420,7 +494,9 @@ public class RetroMod implements ModInitializer {
 
                   "force_translate_complex": false,
 
-                  "polyfills_enabled": true
+                  "polyfills_enabled": true,
+
+                  "verify_transforms": true
                 }
                 """;
         try {
@@ -522,7 +598,16 @@ public class RetroMod implements ModInitializer {
     public boolean restoreMod(String modName) {
         try {
             Path backupPath = BACKUP_FOLDER.resolve(modName);
-            Path modsFolder = Path.of("mods");
+            // Resolve mods folder from the Fabric game directory when available,
+            // not CWD — this is more robust if RetroMod is launched from a
+            // different working directory (e.g. CLI mode).
+            Path modsFolder;
+            try {
+                modsFolder = net.fabricmc.loader.api.FabricLoader.getInstance()
+                        .getGameDir().resolve("mods");
+            } catch (Throwable t) {
+                modsFolder = Path.of("mods");
+            }
             Path targetPath = modsFolder.resolve(modName);
             
             if (!java.nio.file.Files.exists(backupPath)) {

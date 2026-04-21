@@ -1,6 +1,6 @@
 /*
  * RetroMod - Backwards Compatibility Layer for Minecraft Mods
- * Copyright (c) 2026 Bownlux. Licensed under RetroMod Personal Use License.
+ * Copyright (c) 2026 Bownlux. Licensed under MIT License.
  */
 package com.retromod.mapping;
 
@@ -239,6 +239,73 @@ public class IntermediaryToMojangMapper {
      */
     public Map<String, String> getClassMap() {
         return Collections.unmodifiableMap(classMap);
+    }
+
+    /**
+     * Register every loaded intermediary→Mojang mapping (classes, methods,
+     * fields) plus the 26.1 class moves into the given transformer's redirect
+     * tables. Idempotent — safe to call multiple times (subsequent calls
+     * overwrite any matching entries with the same value).
+     *
+     * <p>This is the single entry point that <b>any</b> startup path should
+     * invoke to prepare a {@code RetroModTransformer} for Fabric intermediary
+     * remapping. Previously this wiring was duplicated inline in
+     * {@code RetroModPreLaunch}, which meant the CLI's {@code gaps} and
+     * {@code batch} commands couldn't benefit from it — AppleSkin and other
+     * Fabric mods had all their intermediary class names show up as
+     * "missing" in the gap report. Centralizing here fixes that for every
+     * caller.</p>
+     *
+     * <p>Composition: when an intermediary name {@code class_X} maps to a
+     * Mojang name that was subsequently <i>moved</i> in 26.1
+     * ({@code OldMojangName → NewMojangName}), we compose both hops so the
+     * transformer registers {@code class_X → NewMojangName} directly. This
+     * matters because ASM's {@code ClassRemapper} is single-pass — if we
+     * registered the intermediate stop, it would never fire the second hop.</p>
+     *
+     * @param transformer the transformer to populate; must not be null
+     * @return number of class redirects registered (for diagnostic logging)
+     */
+    public static int applyTo(com.retromod.core.RetroModTransformer transformer) {
+        if (transformer == null) {
+            throw new IllegalArgumentException("transformer must not be null");
+        }
+        IntermediaryToMojangMapper mapper = getInstance();
+        if (!mapper.isLoaded()) {
+            LOGGER.debug("IntermediaryToMojangMapper.applyTo called but mappings not loaded");
+            return 0;
+        }
+
+        Map<String, String> classMoveMap = mapper.getClassMoves();
+
+        int classRedirects = 0;
+        int composed = 0;
+        for (Map.Entry<String, String> entry : mapper.getClassMap().entrySet()) {
+            String intermediary = entry.getKey();
+            String mojang = entry.getValue();
+            // Compose with class-moves so the single-pass ClassRemapper lands
+            // on the *final* 26.1 name, not an intermediate stop.
+            String finalName = classMoveMap.getOrDefault(mojang, mojang);
+            if (!finalName.equals(mojang)) composed++;
+            transformer.registerClassRedirect(intermediary, finalName);
+            classRedirects++;
+        }
+        transformer.registerIntermediaryNameMappings(
+                mapper.getMethodMap(), mapper.getFieldMap());
+
+        // Also register class-moves on their own (for mods that already use
+        // Mojang names — e.g. mods targeting 1.20+ with GuiGraphics — the
+        // intermediary step is skipped but the 26.1 move still applies).
+        int classMoves = 0;
+        for (Map.Entry<String, String> entry : classMoveMap.entrySet()) {
+            transformer.registerClassRedirect(entry.getKey(), entry.getValue());
+            classMoves++;
+        }
+
+        LOGGER.info("IntermediaryToMojangMapper.applyTo: {} intermediary→Mojang class redirects ({} composed), {} methods, {} fields, {} additional class-moves",
+                classRedirects, composed, mapper.getMethodMap().size(),
+                mapper.getFieldMap().size(), classMoves);
+        return classRedirects;
     }
 
     /**

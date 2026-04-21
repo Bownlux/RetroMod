@@ -1,0 +1,41 @@
+{
+  "retromod.title_screen.button": "RetroMod",
+  "retromod.title_screen.settings": "\u2699",
+
+  "retromod.main.title": "RetroMod",
+  "retromod.main.subtitle": "Trascina o seleziona i JAR delle mod da trasformare",
+  "retromod.main.add_mods": "Aggiungi mod\u2026",
+  "retromod.main.open_folder": "Apri cartella mod",
+
+  "retromod.screen.title": "RetroMod - Gestore di mod",
+  "retromod.screen.add_mods": "Aggiungi mod da trasformare",
+  "retromod.screen.full_aot": "Modalit\u00e0 AOT completa (compilazione pi\u00f9 lenta, gioco pi\u00f9 veloce)",
+  "retromod.screen.complexity_warning": "RetroMod non ha trasformato %s perch\u00e9 \u00e8 improbabile che funzioni. Abilita \"force_translate_complex\" in config/retromod/config.json per forzare la trasformazione.",
+  "retromod.screen.transform_complete": "Trasformazione completata! Riavvia Minecraft per applicare le modifiche.",
+  "retromod.screen.no_mods": "Nessuna mod selezionata.",
+  "retromod.screen.transforming": "Trasformazione in corso: %s",
+
+  "retromod.settings.title": "Impostazioni RetroMod",
+  "retromod.settings.done": "Fatto",
+  "retromod.settings.add_mods": "Apri cartella mod",
+  "retromod.settings.on": "\u00a7aATTIVO",
+  "retromod.settings.off": "\u00a7cSPENTO",
+
+  "retromod.settings.use_aot": "Compilazione AOT",
+  "retromod.settings.use_hybrid": "Modalit\u00e0 ibrida",
+  "retromod.settings.transform_mixins": "Trasforma i Mixin",
+  "retromod.settings.transform_refmaps": "Trasforma i Refmap",
+  "retromod.settings.remap_reflection": "Rimappare riflessione",
+  "retromod.settings.polyfills_enabled": "Polyfill",
+  "retromod.settings.verify_transforms": "Verifica trasformazioni",
+  "retromod.settings.force_translate_complex": "Forza traduzione complessa",
+  "retromod.settings.log_transformations": "Registra trasformazioni",
+  "retromod.settings.debug": "Modalit\u00e0 debug",
+
+  "retromod.filepicker.title": "RetroMod \u2014 Seleziona i JAR delle mod da trasformare",
+
+  "retromod.result.success": "Trasformato",
+  "retromod.result.skipped": "Gi\u00e0 compatibile",
+  "retromod.result.failed": "Fallito",
+  "retromod.result.complex_warning": "Improbabile che funzioni"
+}

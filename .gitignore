@@ -99,6 +99,9 @@ MODRINTH_GUIDE*
 # Claude session notes (persistent memory across sessions)
 .claude/session-notes.md
 
+# Claude design doc — local working notes for the #3/#4 feature work
+.claude/design-3-4.md
+
 # Third-party mod artifacts (from testing/transformation, not part of RetroMod)
 /fabric.mod.json
 /META-INF/

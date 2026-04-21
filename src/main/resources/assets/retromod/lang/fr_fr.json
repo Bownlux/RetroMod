@@ -1,0 +1,41 @@
+{
+  "retromod.title_screen.button": "RetroMod",
+  "retromod.title_screen.settings": "\u2699",
+
+  "retromod.main.title": "RetroMod",
+  "retromod.main.subtitle": "D\u00e9posez ou s\u00e9lectionnez des JAR de mods",
+  "retromod.main.add_mods": "Ajouter des mods\u2026",
+  "retromod.main.open_folder": "Ouvrir le dossier des mods",
+
+  "retromod.screen.title": "RetroMod - Gestionnaire de mods",
+  "retromod.screen.add_mods": "Ajouter des mods \u00e0 transformer",
+  "retromod.screen.full_aot": "Mode AOT complet (compilation plus lente, jeu plus rapide)",
+  "retromod.screen.complexity_warning": "RetroMod n'a pas transform\u00e9 %s car il est peu probable qu'il fonctionne. Activez \"force_translate_complex\" dans config/retromod/config.json pour forcer la transformation.",
+  "retromod.screen.transform_complete": "Transformation termin\u00e9e\u00a0! Red\u00e9marrez Minecraft pour appliquer les changements.",
+  "retromod.screen.no_mods": "Aucun mod s\u00e9lectionn\u00e9.",
+  "retromod.screen.transforming": "Transformation\u00a0: %s",
+
+  "retromod.settings.title": "Param\u00e8tres RetroMod",
+  "retromod.settings.done": "Termin\u00e9",
+  "retromod.settings.add_mods": "Ouvrir le dossier des mods",
+  "retromod.settings.on": "\u00a7aACTIV\u00c9",
+  "retromod.settings.off": "\u00a7cD\u00c9SACTIV\u00c9",
+
+  "retromod.settings.use_aot": "Compilation AOT",
+  "retromod.settings.use_hybrid": "Mode hybride",
+  "retromod.settings.transform_mixins": "Transformer les Mixins",
+  "retromod.settings.transform_refmaps": "Transformer les Refmaps",
+  "retromod.settings.remap_reflection": "Remapper la r\u00e9flexion",
+  "retromod.settings.polyfills_enabled": "Polyfills",
+  "retromod.settings.verify_transforms": "V\u00e9rifier les transformations",
+  "retromod.settings.force_translate_complex": "Forcer la traduction complexe",
+  "retromod.settings.log_transformations": "Journaliser les transformations",
+  "retromod.settings.debug": "Mode d\u00e9bogage",
+
+  "retromod.filepicker.title": "RetroMod \u2014 S\u00e9lectionnez les JAR de mods \u00e0 transformer",
+
+  "retromod.result.success": "Transform\u00e9",
+  "retromod.result.skipped": "D\u00e9j\u00e0 compatible",
+  "retromod.result.failed": "\u00c9chec",
+  "retromod.result.complex_warning": "Peu probable qu'il fonctionne"
+}

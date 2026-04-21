@@ -1,10 +1,41 @@
 {
   "retromod.title_screen.button": "RetroMod",
+  "retromod.title_screen.settings": "\u2699",
+
+  "retromod.main.title": "RetroMod",
+  "retromod.main.subtitle": "Drop or pick mod JARs to transform",
+  "retromod.main.add_mods": "Add Mods\u2026",
+  "retromod.main.open_folder": "Open Mods Folder",
+
   "retromod.screen.title": "RetroMod - Mod Manager",
   "retromod.screen.add_mods": "Add Mods to Transform",
   "retromod.screen.full_aot": "Full AOT Mode (slower compile, faster gameplay)",
   "retromod.screen.complexity_warning": "RetroMod did not translate %s because it is unlikely to work. Enable \"force_translate_complex\" in config/retromod/config.json to force translation.",
   "retromod.screen.transform_complete": "Transformation complete! Restart Minecraft for changes.",
   "retromod.screen.no_mods": "No mods selected.",
-  "retromod.screen.transforming": "Transforming: %s"
+  "retromod.screen.transforming": "Transforming: %s",
+
+  "retromod.settings.title": "RetroMod Settings",
+  "retromod.settings.done": "Done",
+  "retromod.settings.add_mods": "Open Mods Folder",
+  "retromod.settings.on": "\u00a7aON",
+  "retromod.settings.off": "\u00a7cOFF",
+
+  "retromod.settings.use_aot": "AOT Compilation",
+  "retromod.settings.use_hybrid": "Hybrid Mode",
+  "retromod.settings.transform_mixins": "Transform Mixins",
+  "retromod.settings.transform_refmaps": "Transform Refmaps",
+  "retromod.settings.remap_reflection": "Remap Reflection",
+  "retromod.settings.polyfills_enabled": "Polyfills",
+  "retromod.settings.verify_transforms": "Verify Transforms",
+  "retromod.settings.force_translate_complex": "Force Translate Complex",
+  "retromod.settings.log_transformations": "Log Transformations",
+  "retromod.settings.debug": "Debug Mode",
+
+  "retromod.filepicker.title": "RetroMod \u2014 Select Mod JARs to Transform",
+
+  "retromod.result.success": "Transformed",
+  "retromod.result.skipped": "Already compatible",
+  "retromod.result.failed": "Failed",
+  "retromod.result.complex_warning": "Unlikely to work"
 }

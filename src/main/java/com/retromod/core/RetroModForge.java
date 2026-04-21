@@ -65,6 +65,28 @@ public class RetroModForge {
         // Load Forge-specific shims
         loadForgeShims(transformer);
 
+        // Load auto-fix fixes from previous launch.
+        // These are redirects/patches discovered by analyzing crash logs from
+        // a prior launch. Must be loaded AFTER shims (so shim redirects take
+        // priority) but BEFORE transformation (so fixes are applied during transform).
+        try {
+            AutoFixEngine autoFixEngine = new AutoFixEngine();
+            int savedFixes = autoFixEngine.loadAndApplySavedFixes(transformer);
+            if (savedFixes > 0) {
+                LOGGER.info("AutoFix: loaded {} saved fix(es) from previous launch", savedFixes);
+            }
+        } catch (Exception e) {
+            LOGGER.debug("Could not load auto-fix saved fixes: {}", e.getMessage());
+        }
+
+        // Initialize fuzzy resolver — last-resort fallback for unresolved references.
+        // Auto-detects the MC JAR from the classpath.
+        try {
+            transformer.initFuzzyResolver(null);
+        } catch (Exception e) {
+            LOGGER.debug("Could not initialize fuzzy resolver: {}", e.getMessage());
+        }
+
         // Initialize hybrid AOT/JIT engine
         initializeHybridEngine();
 
@@ -91,7 +113,29 @@ public class RetroModForge {
 
         // Scan for mods that can be runtime-transformed (minor versions)
         scanForRuntimeTransformableMods();
-        
+
+        // Auto-fix: analyze the PREVIOUS launch's log for errors and prepare fixes.
+        // Scans latest.log for known crash patterns (NoSuchMethodError, VerifyError,
+        // mixin failures, etc.) and registers fixes so the NEXT retransformation
+        // incorporates them.
+        try {
+            Path gameDir = Paths.get(".").toAbsolutePath().normalize();
+            Path logFile = gameDir.resolve("logs/latest.log");
+            if (Files.exists(logFile)) {
+                AutoFixEngine autoFixEngine = new AutoFixEngine();
+                java.util.List<AutoFixEngine.AppliedFix> fixes =
+                    autoFixEngine.analyzeAndFix(logFile, transformer);
+                if (!fixes.isEmpty()) {
+                    LOGGER.info("AutoFix: found and applied {} fix(es) from previous log", fixes.size());
+                    for (AutoFixEngine.AppliedFix fix : fixes) {
+                        LOGGER.info("  [{}] {} => {}", fix.errorType(), fix.description(), fix.action());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Could not run auto-fix analysis: {}", e.getMessage());
+        }
+
         LOGGER.info("RetroMod initialized!");
         
         if (isServer) {

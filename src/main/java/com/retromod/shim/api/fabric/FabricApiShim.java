@@ -1,6 +1,6 @@
 /*
  * RetroMod - Backwards Compatibility Layer for Minecraft Mods
- * Copyright (c) 2026 Bownlux. Licensed under RetroMod Personal Use License.
+ * Copyright (c) 2026 Bownlux. Licensed under MIT License.
  * 
  * Fabric API Compatibility Shims
  * Handles changes in Fabric API between versions 1.14 - 1.21.11

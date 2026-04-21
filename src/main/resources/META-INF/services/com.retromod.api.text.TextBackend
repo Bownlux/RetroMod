@@ -1,7 +1,0 @@
-# RetroMod API - Text Backend ServiceLoader configuration
-# Copyright (c) 2026 Bownlux
-#
-# This file tells Java's ServiceLoader where to find the implementation of
-# the TextBackend interface. When TextFactory.literal() is called for the
-# first time, ServiceLoader reads this file and instantiates the class listed below.
-com.retromod.core.api.TextBackendImpl

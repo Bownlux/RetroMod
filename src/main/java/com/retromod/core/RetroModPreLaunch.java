@@ -103,6 +103,21 @@ public class RetroModPreLaunch implements PreLaunchEntrypoint {
             // Step 0: Register shims BEFORE transforming so redirects are available
             registerShimsForTransform();
 
+            // Step 0.5: Load auto-fix fixes from previous launch.
+            // These are redirects/patches discovered by analyzing crash logs from
+            // a prior launch. Must be loaded AFTER shims (so shim redirects take
+            // priority) but BEFORE transformation (so fixes are applied during transform).
+            try {
+                AutoFixEngine autoFixEngine = new AutoFixEngine();
+                int savedFixes = autoFixEngine.loadAndApplySavedFixes(
+                    RetroModTransformer.getInstance());
+                if (savedFixes > 0) {
+                    LOGGER.info("AutoFix: loaded {} saved fix(es) from previous launch", savedFixes);
+                }
+            } catch (Exception e) {
+                LOGGER.debug("Could not load auto-fix saved fixes: {}", e.getMessage());
+            }
+
             // Step 1: Create all folders and guide files
             createFoldersAndGuides(gameDir);
             

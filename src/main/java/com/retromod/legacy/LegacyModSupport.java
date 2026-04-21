@@ -52,6 +52,7 @@ package com.retromod.legacy;
 
 import com.retromod.core.*;
 import com.retromod.aot.*;
+import com.retromod.util.ZipSecurity;
 import org.objectweb.asm.*;
 import org.objectweb.asm.tree.*;
 
@@ -239,46 +240,80 @@ public class LegacyModSupport {
             int classesSkipped = 0;
             
             Enumeration<JarEntry> entries = sourceJar.entries();
+            long totalBytes = 0;
             while (entries.hasMoreElements()) {
                 JarEntry entry = entries.nextElement();
-                
+
+                // Sanitize entry name — even though we're writing to another JAR
+                // (not to disk here), downstream tools may extract the output
+                // and be vulnerable to zip-slip. Reject traversal / absolute paths.
+                String safeName;
+                try {
+                    safeName = ZipSecurity.safeEntryName(entry.getName());
+                } catch (IOException badName) {
+                    System.out.println("[RetroMod-Legacy] Skipping unsafe entry: " + badName.getMessage());
+                    continue;
+                }
+
                 try (InputStream is = sourceJar.getInputStream(entry)) {
-                    if (entry.getName().endsWith(".class")) {
+                    if (safeName.endsWith(".class")) {
                         // Transform class file
-                        byte[] classBytes = is.readAllBytes();
+                        byte[] classBytes = ZipSecurity.safeReadAllBytes(is);
+                        totalBytes += classBytes.length;
+                        if (totalBytes > ZipSecurity.DEFAULT_MAX_TOTAL_SIZE) {
+                            throw new IOException("Legacy mod exceeds " +
+                                    ZipSecurity.DEFAULT_MAX_TOTAL_SIZE + " bytes total (possible zip bomb)");
+                        }
                         byte[] transformed = transformClass(
-                            classBytes, analysis, entry.getName()
+                            classBytes, analysis, safeName
                         );
-                        
+
                         if (transformed != classBytes) {
                             classesTransformed++;
                         } else {
                             classesSkipped++;
                         }
-                        
-                        outputStream.putNextEntry(new JarEntry(entry.getName()));
+
+                        outputStream.putNextEntry(new JarEntry(safeName));
                         outputStream.write(transformed);
                         outputStream.closeEntry();
-                        
-                    } else if (entry.getName().equals("mcmod.info") ||
-                               entry.getName().equals("mods.toml") ||
-                               entry.getName().equals("META-INF/mods.toml") ||
-                               entry.getName().equals("fabric.mod.json") ||
-                               entry.getName().equals("quilt.mod.json")) {
+
+                    } else if (safeName.equals("mcmod.info") ||
+                               safeName.equals("mods.toml") ||
+                               safeName.equals("META-INF/mods.toml") ||
+                               safeName.equals("fabric.mod.json") ||
+                               safeName.equals("quilt.mod.json")) {
                         // Transform mod metadata
-                        byte[] metadata = is.readAllBytes();
+                        byte[] metadata = ZipSecurity.safeReadAllBytes(is);
+                        totalBytes += metadata.length;
+                        if (totalBytes > ZipSecurity.DEFAULT_MAX_TOTAL_SIZE) {
+                            throw new IOException("Legacy mod exceeds total size limit");
+                        }
                         byte[] transformed = transformMetadata(
-                            metadata, entry.getName(), analysis
+                            metadata, safeName, analysis
                         );
-                        
-                        outputStream.putNextEntry(new JarEntry(entry.getName()));
+
+                        outputStream.putNextEntry(new JarEntry(safeName));
                         outputStream.write(transformed);
                         outputStream.closeEntry();
-                        
+
                     } else {
-                        // Copy unchanged
-                        outputStream.putNextEntry(new JarEntry(entry.getName()));
-                        is.transferTo(outputStream);
+                        // Copy unchanged — stream with a byte counter so a giant
+                        // asset entry can't blow up the total budget silently.
+                        outputStream.putNextEntry(new JarEntry(safeName));
+                        byte[] buf = new byte[8192];
+                        long entryBytes = 0;
+                        int n;
+                        while ((n = is.read(buf)) != -1) {
+                            entryBytes += n;
+                            totalBytes += n;
+                            if (entryBytes > ZipSecurity.DEFAULT_MAX_ENTRY_SIZE ||
+                                totalBytes > ZipSecurity.DEFAULT_MAX_TOTAL_SIZE) {
+                                throw new IOException("Legacy mod entry '" + safeName +
+                                        "' exceeds size limit (possible zip bomb)");
+                            }
+                            outputStream.write(buf, 0, n);
+                        }
                         outputStream.closeEntry();
                     }
                 }

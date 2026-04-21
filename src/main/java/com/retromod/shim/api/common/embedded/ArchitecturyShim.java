@@ -1,6 +1,6 @@
 /*
  * RetroMod - Backwards Compatibility Layer for Minecraft Mods
- * Copyright (c) 2026 Bownlux. Licensed under RetroMod Personal Use License.
+ * Copyright (c) 2026 Bownlux. Licensed under MIT License.
  */
 package com.retromod.shim.api.common.embedded;
 

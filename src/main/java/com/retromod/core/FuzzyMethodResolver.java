@@ -99,7 +99,9 @@ public class FuzzyMethodResolver {
     private static final int SCORE_MOST_PARAMS_MATCH = 8;
 
     /** Minimum score to auto-apply the redirect. */
-    private static final int THRESHOLD_AUTO_APPLY = 70;
+    // Raised from 70 to 85 — lower thresholds caused VerifyErrors by matching
+    // methods with incompatible return types (e.g., MutableComponent vs GuiMessageTag)
+    private static final int THRESHOLD_AUTO_APPLY = 85;
     /** Minimum score to log a warning (but not apply). */
     private static final int THRESHOLD_LOG_WARNING = 50;
 
@@ -133,11 +135,23 @@ public class FuzzyMethodResolver {
     // ═══════════════════════════════════════════════════════════════════════
 
     /**
+     * Maximum number of entries in the resolve caches. Once this limit is reached,
+     * the cache is cleared to prevent unbounded memory growth. A mod with thousands
+     * of unique unresolved references could otherwise cause OOM in long-running sessions.
+     *
+     * 10,000 entries is generous — a typical mod has ~50-200 unresolved references.
+     * The Minecraft JAR has ~8,000 classes total, so even a worst-case scenario
+     * (every method in every class is unresolved) would fit within this limit.
+     */
+    private static final int MAX_CACHE_SIZE = 10_000;
+
+    /**
      * Cache of resolved method matches.
      * Key: "owner.name.desc" (the unresolved reference)
      * Value: resolved MethodInfo, or EMPTY_METHOD_INFO sentinel for "no match"
      *
      * Using ConcurrentHashMap for thread-safe access during class loading.
+     * Bounded by MAX_CACHE_SIZE to prevent unbounded memory growth.
      */
     private final Map<String, MethodInfo> methodResolveCache = new ConcurrentHashMap<>();
 
@@ -145,6 +159,8 @@ public class FuzzyMethodResolver {
      * Cache of resolved field matches.
      * Key: "owner.name.desc" (the unresolved reference)
      * Value: resolved FieldInfo, or EMPTY_FIELD_INFO sentinel for "no match"
+     *
+     * Bounded by MAX_CACHE_SIZE to prevent unbounded memory growth.
      */
     private final Map<String, FieldInfo> fieldResolveCache = new ConcurrentHashMap<>();
 
@@ -152,6 +168,27 @@ public class FuzzyMethodResolver {
     private static final MethodInfo EMPTY_METHOD_INFO = new MethodInfo("", "", "", -1);
     /** Sentinel value for "no field match found". */
     private static final FieldInfo EMPTY_FIELD_INFO = new FieldInfo("", "", "", -1);
+
+    /**
+     * Put a value into a bounded cache. If the cache exceeds MAX_CACHE_SIZE,
+     * it is cleared first to reclaim memory. This is a simple eviction strategy
+     * that trades occasional cache misses for bounded memory usage.
+     *
+     * <p>The clear-on-overflow approach is chosen over LRU because:
+     * <ul>
+     *   <li>ConcurrentHashMap has no built-in LRU eviction</li>
+     *   <li>The cache is a performance optimization, not a correctness requirement</li>
+     *   <li>Overflow only happens with pathologically many unique unresolved refs</li>
+     * </ul>
+     */
+    private <V> void boundedCachePut(Map<String, V> cache, String key, V value) {
+        if (cache.size() >= MAX_CACHE_SIZE) {
+            LOGGER.debug("Resolve cache reached {} entries, clearing to prevent unbounded growth",
+                    MAX_CACHE_SIZE);
+            cache.clear();
+        }
+        cache.put(key, value);
+    }
 
     /** Whether the JAR has been indexed. Volatile for cross-thread visibility. */
     private volatile boolean indexed = false;
@@ -314,6 +351,122 @@ public class FuzzyMethodResolver {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
+    // EXACT MEMBERSHIP CHECKS — for ReferenceVerifier & ReflectionStringRemapper
+    // ═══════════════════════════════════════════════════════════════════════
+    //
+    // These are "does this exact class/method/field exist in the target MC JAR?"
+    // queries — distinct from the fuzzy resolve* methods below, which return
+    // best-match candidates. The verifier uses these to decide whether a reference
+    // is broken (so no match → report unresolved); the remapper uses them to
+    // check whether a rewritten reflection string target actually exists.
+
+    /**
+     * Exact class existence check against the indexed MC JAR.
+     *
+     * @param internalName JVM internal class name (e.g., "net/minecraft/core/BlockPos")
+     * @return {@code true} if the class exists in the target MC JAR,
+     *         {@code false} if the index has no record of it (or if the resolver
+     *         isn't indexed — callers should check {@link #isIndexed()} first if
+     *         they need to distinguish those cases)
+     */
+    public boolean hasClass(String internalName) {
+        if (!indexed || internalName == null) return false;
+        // classHierarchy is populated for every class we indexed, even ones with
+        // no methods/fields, so it's the authoritative existence oracle.
+        return classHierarchy.containsKey(internalName);
+    }
+
+    /**
+     * Exact method existence check against the indexed MC JAR, including
+     * inherited methods from superclasses and interfaces.
+     *
+     * @param owner      JVM internal class name
+     * @param name       method name
+     * @param descriptor method descriptor (e.g., "(IIF)V")
+     * @return {@code true} if a matching method is declared on {@code owner}
+     *         or any of its ancestors
+     */
+    public boolean hasMethod(String owner, String name, String descriptor) {
+        if (!indexed || owner == null) return false;
+        // Walk class hierarchy to find inherited methods too. A reference to
+        // Level#getBlockState may compile against a method declared on a parent,
+        // so a direct-only check would produce false-negatives.
+        return hasMemberInHierarchy(owner, parent -> {
+            List<MethodInfo> methods = methodIndex.get(parent);
+            if (methods == null) return false;
+            for (MethodInfo m : methods) {
+                if (m.name().equals(name) && m.descriptor().equals(descriptor)) {
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+
+    /**
+     * Exact field existence check against the indexed MC JAR, including
+     * inherited fields from superclasses.
+     *
+     * @param owner      JVM internal class name
+     * @param name       field name
+     * @param descriptor field descriptor (e.g., "Ljava/lang/String;")
+     */
+    public boolean hasField(String owner, String name, String descriptor) {
+        if (!indexed || owner == null) return false;
+        return hasMemberInHierarchy(owner, parent -> {
+            List<FieldInfo> fields = fieldIndex.get(parent);
+            if (fields == null) return false;
+            for (FieldInfo f : fields) {
+                if (f.name().equals(name) && f.descriptor().equals(descriptor)) {
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+
+    /**
+     * Walk the class hierarchy (including superclasses and interfaces) upward
+     * from {@code start}, returning {@code true} as soon as {@code predicate}
+     * matches any level in the hierarchy.
+     *
+     * <p>Terminates cleanly even if the hierarchy contains cycles (shouldn't
+     * happen with well-formed bytecode, but defensive against malformed input).</p>
+     */
+    private boolean hasMemberInHierarchy(String start, java.util.function.Predicate<String> predicate) {
+        Set<String> visited = new HashSet<>();
+        Deque<String> stack = new ArrayDeque<>();
+        stack.push(start);
+        while (!stack.isEmpty()) {
+            String current = stack.pop();
+            if (!visited.add(current)) continue;
+            if (predicate.test(current)) return true;
+            List<String> parents = classHierarchy.get(current);
+            if (parents != null) {
+                for (String p : parents) {
+                    if (p != null && !visited.contains(p)) stack.push(p);
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Unmodifiable view of every class name present in the index. Used by
+     * {@code FuzzyBackedSymbolIndex.suggestClassAlternatives} to scan for
+     * simple-name matches (e.g., "BlockPos" in old package → "BlockPos" in
+     * new package).
+     *
+     * <p>Returns an empty set if not indexed.</p>
+     */
+    public Set<String> getIndexedClassNames() {
+        if (!indexed) return Collections.emptySet();
+        // classHierarchy is our authoritative class-existence map (every indexed
+        // class has an entry, even ones with no methods/fields).
+        return Collections.unmodifiableSet(classHierarchy.keySet());
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     // METHOD RESOLUTION — fuzzy match an unresolved method call
     // ═══════════════════════════════════════════════════════════════════════
 
@@ -344,7 +497,7 @@ public class FuzzyMethodResolver {
         // Gather candidate methods from the owner class and its parents
         List<MethodInfo> candidates = gatherMethodCandidates(owner);
         if (candidates.isEmpty()) {
-            methodResolveCache.put(cacheKey, EMPTY_METHOD_INFO);
+            boundedCachePut(methodResolveCache, cacheKey, EMPTY_METHOD_INFO);
             return null;
         }
 
@@ -377,7 +530,7 @@ public class FuzzyMethodResolver {
                     owner, name, descriptor,
                     bestMatch.owner(), bestMatch.name(), bestMatch.descriptor(),
                     bestScore);
-            methodResolveCache.put(cacheKey, bestMatch);
+            boundedCachePut(methodResolveCache, cacheKey, bestMatch);
             return bestMatch;
         } else if (bestMatch != null && bestScore >= THRESHOLD_LOG_WARNING) {
             LOGGER.warn("[RetroMod-Fuzzy] Possible match for {}.{}{} -> {}.{}{} " +
@@ -393,7 +546,7 @@ public class FuzzyMethodResolver {
         }
 
         // Cache the "no match" result to avoid re-scoring
-        methodResolveCache.put(cacheKey, EMPTY_METHOD_INFO);
+        boundedCachePut(methodResolveCache, cacheKey, EMPTY_METHOD_INFO);
         return null;
     }
 
@@ -548,8 +701,15 @@ public class FuzzyMethodResolver {
                 // Different primitive types (e.g., long vs int) — reject
                 return 0;
             }
-            // Both return objects but different types — small penalty (might be valid)
-            score -= 5;
+            // Both return objects but completely different types — heavy penalty.
+            // Different return types cause VerifyError (e.g., MutableComponent vs GuiMessageTag).
+            // Only allow if the names are very similar (likely a type rename, not a different method).
+            if (levenshteinDistance(unresolvedReturn, candidateReturn) > 10) {
+                // Completely unrelated return types — reject
+                return 0;
+            }
+            // Somewhat similar return types — significant penalty
+            score -= 20;
         }
 
         return score;
@@ -586,7 +746,7 @@ public class FuzzyMethodResolver {
         // Gather candidate fields from the owner class and its parents
         List<FieldInfo> candidates = gatherFieldCandidates(owner);
         if (candidates.isEmpty()) {
-            fieldResolveCache.put(cacheKey, EMPTY_FIELD_INFO);
+            boundedCachePut(fieldResolveCache, cacheKey, EMPTY_FIELD_INFO);
             return null;
         }
 
@@ -612,7 +772,7 @@ public class FuzzyMethodResolver {
                     owner, name, descriptor,
                     bestMatch.owner(), bestMatch.name(), bestMatch.descriptor(),
                     bestScore);
-            fieldResolveCache.put(cacheKey, bestMatch);
+            boundedCachePut(fieldResolveCache, cacheKey, bestMatch);
             return bestMatch;
         } else if (bestMatch != null && bestScore >= THRESHOLD_LOG_WARNING) {
             LOGGER.warn("[RetroMod-Fuzzy] Possible field match for {}.{} {} -> {}.{} {} " +
@@ -622,7 +782,7 @@ public class FuzzyMethodResolver {
                     bestScore, THRESHOLD_AUTO_APPLY);
         }
 
-        fieldResolveCache.put(cacheKey, EMPTY_FIELD_INFO);
+        boundedCachePut(fieldResolveCache, cacheKey, EMPTY_FIELD_INFO);
         return null;
     }
 

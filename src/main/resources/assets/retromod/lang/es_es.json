@@ -1,0 +1,41 @@
+{
+  "retromod.title_screen.button": "RetroMod",
+  "retromod.title_screen.settings": "\u2699",
+
+  "retromod.main.title": "RetroMod",
+  "retromod.main.subtitle": "Elige o suelta JARs de mods para transformar",
+  "retromod.main.add_mods": "A\u00f1adir mods\u2026",
+  "retromod.main.open_folder": "Abrir carpeta de mods",
+
+  "retromod.screen.title": "RetroMod - Gestor de mods",
+  "retromod.screen.add_mods": "A\u00f1adir mods a transformar",
+  "retromod.screen.full_aot": "Modo AOT completo (compilaci\u00f3n m\u00e1s lenta, juego m\u00e1s r\u00e1pido)",
+  "retromod.screen.complexity_warning": "RetroMod no transform\u00f3 %s porque es improbable que funcione. Activa \"force_translate_complex\" en config/retromod/config.json para forzar la transformaci\u00f3n.",
+  "retromod.screen.transform_complete": "\u00a1Transformaci\u00f3n completa! Reinicia Minecraft para aplicar los cambios.",
+  "retromod.screen.no_mods": "No se seleccion\u00f3 ning\u00fan mod.",
+  "retromod.screen.transforming": "Transformando: %s",
+
+  "retromod.settings.title": "Ajustes de RetroMod",
+  "retromod.settings.done": "Hecho",
+  "retromod.settings.add_mods": "Abrir carpeta de mods",
+  "retromod.settings.on": "\u00a7aACTIVADO",
+  "retromod.settings.off": "\u00a7cDESACTIVADO",
+
+  "retromod.settings.use_aot": "Compilaci\u00f3n AOT",
+  "retromod.settings.use_hybrid": "Modo h\u00edbrido",
+  "retromod.settings.transform_mixins": "Transformar Mixins",
+  "retromod.settings.transform_refmaps": "Transformar Refmaps",
+  "retromod.settings.remap_reflection": "Remapear reflexi\u00f3n",
+  "retromod.settings.polyfills_enabled": "Polyfills",
+  "retromod.settings.verify_transforms": "Verificar transformaciones",
+  "retromod.settings.force_translate_complex": "Forzar traducci\u00f3n compleja",
+  "retromod.settings.log_transformations": "Registrar transformaciones",
+  "retromod.settings.debug": "Modo de depuraci\u00f3n",
+
+  "retromod.filepicker.title": "RetroMod \u2014 Selecciona los JARs de mods a transformar",
+
+  "retromod.result.success": "Transformado",
+  "retromod.result.skipped": "Ya es compatible",
+  "retromod.result.failed": "Error",
+  "retromod.result.complex_warning": "Poco probable que funcione"
+}

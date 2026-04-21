@@ -625,3 +625,13 @@ net/minecraft/world/level/block/state/properties/DirectionProperty	net/minecraft
 net/minecraft/world/inventory/ClickType	net/minecraft/world/inventory/ClickAction
 # CompiledShaderProgram → ShaderManager (shader system redesigned)
 net/minecraft/client/renderer/CompiledShaderProgram	net/minecraft/client/renderer/ShaderManager
+
+# 26.1 Weighted* class consolidation. Mojang unified WeightedRandomList
+# and SimpleWeightedRandomList into net/minecraft/util/random/WeightedList.
+# Inner classes repackaged under WeightedList$Builder etc. Without these
+# moves old mods (Lithium, Architectury, etc.) hit NoClassDefFoundError at
+# runtime when they try to reference the old class names.
+net/minecraft/util/random/WeightedRandomList	net/minecraft/util/random/WeightedList
+net/minecraft/util/random/WeightedRandomList$WeightedEntry	net/minecraft/util/random/Weighted
+net/minecraft/util/random/SimpleWeightedRandomList	net/minecraft/util/random/WeightedList
+net/minecraft/util/random/SimpleWeightedRandomList$Builder	net/minecraft/util/random/WeightedList$Builder

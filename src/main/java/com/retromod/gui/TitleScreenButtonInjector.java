@@ -1,6 +1,6 @@
 /*
  * RetroMod - Backwards Compatibility Layer for Minecraft Mods
- * Copyright (c) 2026 Bownlux. Licensed under RetroMod Personal Use License.
+ * Copyright (c) 2026 Bownlux. Licensed under MIT License.
  */
 package com.retromod.gui;
 
@@ -160,7 +160,48 @@ public final class TitleScreenButtonInjector {
             );
 
             // Register: AFTER_INIT.register(proxy)
-            Method registerMethod = afterInitEvent.getClass().getMethod("register", Object.class);
+            //
+            // IMPORTANT: on Fabric Loader 0.18.4 + Java 25, resolving this
+            // method via afterInitEvent.getClass() lands on the CONCRETE class
+            // ArrayBackedEvent, which lives in the non-exported impl package
+            // net.fabricmc.fabric.impl.base.event. Java 25's strict module
+            // access blocks reflective invocation on members of that class
+            // even though the method itself is public — setAccessible can't
+            // override module boundaries. We saw this as:
+            //   "class ... cannot access a member of class
+            //    net.fabricmc.fabric.impl.base.event.ArrayBackedEvent
+            //    with modifiers 'public'"
+            //
+            // Fix: resolve `register` on the EXPORTED API superclass
+            // net.fabricmc.fabric.api.event.Event instead. Reflection then
+            // binds the Method to the public-module declaring class, and
+            // invoke() dispatches virtually to ArrayBackedEvent's impl at
+            // runtime — exactly how normal Java calls work. No module-boundary
+            // violation because we never reference the impl class directly.
+            Class<?> eventApiClass;
+            try {
+                eventApiClass = Class.forName("net.fabricmc.fabric.api.event.Event");
+            } catch (ClassNotFoundException notFound) {
+                // Older Fabric API? Fall back to the concrete-class search.
+                eventApiClass = afterInitEvent.getClass();
+            }
+            Method registerMethod = null;
+            try {
+                // Erasure: Event<T>.register(T) -> register(Object) in bytecode.
+                registerMethod = eventApiClass.getMethod("register", Object.class);
+            } catch (NoSuchMethodException noSuch) {
+                // Very old Fabric API? Walk methods by name/arity as a last resort.
+                for (Method m : eventApiClass.getMethods()) {
+                    if ("register".equals(m.getName()) && m.getParameterCount() == 1) {
+                        registerMethod = m;
+                        break;
+                    }
+                }
+            }
+            if (registerMethod == null) {
+                throw new NoSuchMethodException(
+                        "register(Object) not found on Event API class " + eventApiClass.getName());
+            }
             registerMethod.invoke(afterInitEvent, proxy);
 
             LOGGER.debug("Registered via Fabric ScreenEvents.AFTER_INIT");
@@ -318,82 +359,277 @@ public final class TitleScreenButtonInjector {
         try {
             // Get screen dimensions
             int width = McReflect.getIntField(screen, screenClass, 854, "width");
-            int height = McReflect.getIntField(screen, screenClass, 480, "height");
 
-            // Position: above the language selector (bottom-left)
-            int buttonX = width / 2 - 124;
-            int buttonY = height - 52;
+            // Position: top-right corner, 80x20 — out of the way of vanilla
+            // title-screen buttons and language selector. Two-pixel margin so
+            // it doesn't touch the screen edge.
+            int buttonX = width - 82;
+            int buttonY = 2;
 
-            // Create button text: Text.literal("RetroMod") / Component.literal("RetroMod")
-            Method literalMethod = McReflect.findMethod(textClass,
-                new Class[]{String.class}, "literal");
-            if (literalMethod == null) {
-                LOGGER.debug("Could not find Text.literal / Component.literal method");
-                return;
-            }
-            Object buttonText = literalMethod.invoke(null, "RetroMod");
-
-            // Create PressAction / OnPress callback via Proxy
-            // yarn: ButtonWidget$PressAction, mojang: Button$OnPress
+            // Press-action proxy: opens the RetroMod settings/file-picker
+            // screen. We use ConfigScreenFactory because it stays on the
+            // render thread (no AWT FileDialog → no platform issues), and it
+            // includes a button to open the input folder for adding mods.
             Class<?> pressActionClass = findPressActionClass();
             if (pressActionClass == null) {
                 LOGGER.debug("Could not find PressAction / OnPress class");
                 return;
             }
-
             Object pressAction = Proxy.newProxyInstance(
                 pressActionClass.getClassLoader(),
                 new Class<?>[]{pressActionClass},
                 (proxy, method, args) -> {
-                    // Filter: only respond to the actual press method, not Object methods
                     if (method.getDeclaringClass() != Object.class) {
-                        openRetroModManager(screen);
+                        // INFO so it shows in default logs — easy to confirm
+                        // the click actually fired. If this line is missing
+                        // when the user clicks, the click never reached us.
+                        LOGGER.info("[RetroMod] Title-screen button clicked");
+                        try {
+                            MainScreenFactory.open(screen);
+                            LOGGER.info("[RetroMod] MainScreenFactory.open() returned");
+                        } catch (Throwable t) {
+                            LOGGER.warn("[RetroMod] Failed to open RetroMod screen: {}",
+                                    t.getMessage(), t);
+                        }
                     }
                     return null;
                 }
             );
 
-            // Build the button: ButtonWidget.builder(text, action).dimensions(x,y,w,h).build()
-            // yarn: ButtonWidget.builder, mojang: Button.builder
-            Method builderMethod = McReflect.findMethod(buttonWidgetClass,
-                new Class[]{textClass, pressActionClass}, "builder");
-            if (builderMethod == null) {
-                LOGGER.debug("Could not find ButtonWidget.builder / Button.builder");
+            // Plain ButtonWidget with a wide text label. This is the most
+            // reliable path: SpriteIconButton requires the GUI sprite atlas
+            // to register our texture, which can fail silently and leave
+            // an invisible/non-clickable button. Text button always works.
+            Object button = buildPlainTextButton(buttonX, buttonY, pressAction, pressActionClass);
+            if (button == null) {
+                LOGGER.warn("[RetroMod] Could not build title-screen button (button==null)");
                 return;
             }
-            Object builder = builderMethod.invoke(null, buttonText, pressAction);
-
-            // .dimensions(x, y, width, height) / .bounds(x, y, width, height)
-            Method dimensionsMethod = McReflect.findMethod(builder.getClass(),
-                new Class[]{int.class, int.class, int.class, int.class},
-                "dimensions", "bounds", "pos");
-            if (dimensionsMethod != null) {
-                builder = dimensionsMethod.invoke(builder, buttonX, buttonY, 20, 20);
-            }
-
-            // .build()
-            Method buildMethod = McReflect.findMethod(builder.getClass(), "build");
-            if (buildMethod == null) {
-                LOGGER.debug("Could not find builder.build() method");
-                return;
-            }
-            Object button = buildMethod.invoke(builder);
 
             // Add button to screen:
-            // yarn: screen.addDrawableChild(element)
-            // mojang: screen.addRenderableWidget(widget)
+            // yarn: screen.addDrawableChild(element) / mojang: screen.addRenderableWidget(widget)
+            // We try addRenderableWidget FIRST because that's the one that
+            // also wires up event handling (clicks). addDrawableChild on
+            // some versions only wires rendering, not events.
             Method addMethod = McReflect.findMethod(screenClass,
-                "addDrawableChild", "addRenderableWidget", "addWidget");
+                "addRenderableWidget", "addDrawableChild", "addWidget");
             if (addMethod != null) {
                 addMethod.setAccessible(true);
                 addMethod.invoke(screen, button);
+                LOGGER.info("[RetroMod] Title-screen button registered via {} at ({},{})",
+                        addMethod.getName(), buttonX, buttonY);
+            } else {
+                LOGGER.warn("[RetroMod] Could not find any add-widget method on Screen");
             }
 
-            LOGGER.debug("RetroMod button added to title screen");
-
         } catch (Exception e) {
-            LOGGER.warn("Could not add RetroMod button to title screen: {}", e.getMessage());
-            LOGGER.debug("Detailed error:", e);
+            LOGGER.warn("[RetroMod] Could not add title-screen button: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Build a wide ButtonWidget with the text "RetroMod". This is the
+     * known-working fallback — uses the same Button.builder() API that
+     * vanilla MC uses for its own buttons, so click events are wired
+     * correctly by the framework.
+     */
+    private static Object buildPlainTextButton(int x, int y, Object pressAction,
+                                                 Class<?> pressActionClass) {
+        try {
+            Method literal = McReflect.findMethod(textClass,
+                new Class[]{String.class}, "literal");
+            if (literal == null) {
+                LOGGER.warn("[RetroMod] Component.literal() not found");
+                return null;
+            }
+            Object text = literal.invoke(null, "RetroMod");
+
+            Method builder = McReflect.findMethod(buttonWidgetClass,
+                new Class[]{textClass, pressActionClass}, "builder");
+            if (builder == null) {
+                LOGGER.warn("[RetroMod] Button.builder() not found");
+                return null;
+            }
+            Object b = builder.invoke(null, text, pressAction);
+
+            // Width 80 fits "RetroMod" comfortably; height 20 is standard.
+            Method dim = McReflect.findMethod(b.getClass(),
+                new Class[]{int.class, int.class, int.class, int.class},
+                "dimensions", "bounds", "pos");
+            if (dim != null) b = dim.invoke(b, x, y, 80, 20);
+
+            Method build = McReflect.findMethod(b.getClass(), "build");
+            return build != null ? build.invoke(b) : null;
+        } catch (Exception e) {
+            LOGGER.warn("[RetroMod] buildPlainTextButton failed: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+
+    /**
+     * Build a 20x20 logo button. Tries SpriteIconButton (icon-only API) first;
+     * if that fails or the API doesn't exist on this MC version, falls back
+     * to a regular small text button labeled "R".
+     */
+    private static Object buildLogoButton(int x, int y, Object pressAction,
+                                           Class<?> pressActionClass) {
+        // Attempt 1: SpriteIconButton.builder(message, onPress, narrate)
+        //                          .width(20).sprite(spriteId, w, h).build()
+        Object iconBtn = trySpriteIconButton(x, y, pressAction, pressActionClass);
+        if (iconBtn != null) return iconBtn;
+
+        // Fallback: regular ButtonWidget with a single character "R"
+        try {
+            Method literal = McReflect.findMethod(textClass,
+                new Class[]{String.class}, "literal");
+            if (literal == null) return null;
+            Object text = literal.invoke(null, "R");
+
+            Method builder = McReflect.findMethod(buttonWidgetClass,
+                new Class[]{textClass, pressActionClass}, "builder");
+            if (builder == null) return null;
+            Object b = builder.invoke(null, text, pressAction);
+
+            Method dim = McReflect.findMethod(b.getClass(),
+                new Class[]{int.class, int.class, int.class, int.class},
+                "dimensions", "bounds", "pos");
+            if (dim != null) b = dim.invoke(b, x, y, 20, 20);
+
+            Method build = McReflect.findMethod(b.getClass(), "build");
+            return build != null ? build.invoke(b) : null;
+        } catch (Exception e) {
+            LOGGER.debug("Fallback text button failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Try to construct an icon-only button using MC's SpriteIconButton API.
+     * Returns null if the API isn't available — caller falls back to a text button.
+     */
+    private static Object trySpriteIconButton(int x, int y, Object pressAction,
+                                                Class<?> pressActionClass) {
+        try {
+            Class<?> sib = McReflect.findClass(
+                "net.minecraft.client.gui.widget.SpriteIconButton",
+                "net.minecraft.client.gui.components.SpriteIconButton"
+            );
+            if (sib == null) return null;
+
+            Class<?> identifierClass = McReflect.findClass(
+                "net.minecraft.util.Identifier",
+                "net.minecraft.resources.ResourceLocation"
+            );
+            if (identifierClass == null) return null;
+
+            // Build a ResourceLocation/Identifier "retromod:retromod_logo"
+            // Newer MC: ResourceLocation.fromNamespaceAndPath(ns, path)
+            // Older MC: new ResourceLocation(ns, path)
+            Object spriteId = null;
+            try {
+                Method fromNs = identifierClass.getMethod("fromNamespaceAndPath",
+                    String.class, String.class);
+                spriteId = fromNs.invoke(null, "retromod", "retromod_logo");
+            } catch (NoSuchMethodException ignored) {
+                try {
+                    spriteId = identifierClass.getConstructor(String.class, String.class)
+                        .newInstance("retromod", "retromod_logo");
+                } catch (Exception e) {
+                    return null;
+                }
+            }
+            if (spriteId == null) return null;
+
+            // SpriteIconButton.builder(message, onPress, narrate) → builder
+            //   .width(20).sprite(id, 20, 20).build()
+            Method literal = McReflect.findMethod(textClass,
+                new Class[]{String.class}, "literal");
+            if (literal == null) return null;
+            Object message = literal.invoke(null, "RetroMod");
+
+            Method builderMethod = McReflect.findMethod(sib,
+                new Class[]{textClass, pressActionClass, boolean.class}, "builder");
+            if (builderMethod == null) {
+                builderMethod = McReflect.findMethod(sib,
+                    new Class[]{textClass, pressActionClass}, "builder");
+                if (builderMethod == null) return null;
+            }
+            Object builder = builderMethod.getParameterCount() == 3
+                ? builderMethod.invoke(null, message, pressAction, true)
+                : builderMethod.invoke(null, message, pressAction);
+
+            // .width(20)
+            Method widthMethod = McReflect.findMethod(builder.getClass(),
+                new Class[]{int.class}, "width");
+            if (widthMethod != null) builder = widthMethod.invoke(builder, 20);
+
+            // .sprite(id, 20, 20)
+            Method spriteMethod = McReflect.findMethod(builder.getClass(),
+                new Class[]{identifierClass, int.class, int.class}, "sprite");
+            if (spriteMethod != null) {
+                builder = spriteMethod.invoke(builder, spriteId, 20, 20);
+            }
+
+            // .build()
+            Method build = McReflect.findMethod(builder.getClass(), "build");
+            Object btn = build != null ? build.invoke(builder) : null;
+            if (btn == null) return null;
+
+            // Position the button (SpriteIconButton.builder doesn't set position)
+            Method setX = McReflect.findMethod(btn.getClass(), new Class[]{int.class}, "setX");
+            Method setY = McReflect.findMethod(btn.getClass(), new Class[]{int.class}, "setY");
+            if (setX != null) setX.invoke(btn, x);
+            if (setY != null) setY.invoke(btn, y);
+
+            LOGGER.debug("Built SpriteIconButton with retromod_logo");
+            return btn;
+        } catch (Exception e) {
+            LOGGER.debug("SpriteIconButton not available: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    // (Old helper kept around but unused — settings now reached via the
+    // RetroMod logo button itself.)
+    @SuppressWarnings("unused")
+    private static void addSettingsButton(Object screen, int x, int y,
+            Class<?> pressActionClass, Method literalMethod,
+            Method builderMethod, Method addMethod) {
+        try {
+            Object settingsText = literalMethod.invoke(null, "\u2699");
+
+            Object settingsAction = Proxy.newProxyInstance(
+                pressActionClass.getClassLoader(),
+                new Class<?>[]{pressActionClass},
+                (proxy, method, args) -> {
+                    if (method.getDeclaringClass() != Object.class) {
+                        ConfigScreenFactory.open(screen);
+                    }
+                    return null;
+                }
+            );
+
+            Object builder = builderMethod.invoke(null, settingsText, settingsAction);
+
+            Method dimMethod = McReflect.findMethod(builder.getClass(),
+                new Class[]{int.class, int.class, int.class, int.class},
+                "dimensions", "bounds", "pos");
+            if (dimMethod != null) {
+                builder = dimMethod.invoke(builder, x, y, 20, 20);
+            }
+
+            Method buildMethod = McReflect.findMethod(builder.getClass(), "build");
+            if (buildMethod != null) {
+                Object button = buildMethod.invoke(builder);
+                if (addMethod != null) {
+                    addMethod.setAccessible(true);
+                    addMethod.invoke(screen, button);
+                }
+            }
+
+            LOGGER.debug("RetroMod settings button added to title screen");
+        } catch (Exception e) {
+            LOGGER.debug("Could not add settings button: {}", e.getMessage());
         }
     }
 

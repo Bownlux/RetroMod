@@ -1,0 +1,44 @@
+{
+  "_comment": "Curated runtime-version spoofs. When a transformed mod calls FabricLoader.getModContainer(id) for one of these mod IDs, VersionSpoofer returns a wrapped container whose reported version is the string below. Only the version-reporting chain is lied about — every other container field passes through real data. A missing mod (no installed container) passes through as Optional.empty, so the spoofer never fabricates versions for absent mods.",
+  "_version": 2,
+
+  "_design_rule": "Only spoof when the real installed version is GENUINELY incompatible with a common dependent check. If a user has the current major release of a library installed (e.g. Cloth Config 15.x on MC 1.21+), modern dependents already accept it — spoofing downgrades that into artificial incompatibility. The right default is: DO NOT SPOOF unless we know the user's version won't naturally pass.",
+
+  "_removed_in_v2": {
+    "cloth-config":     "Current users run Cloth 15.x which REI 16 accepts natively. Spoofing to 13.x broke REI 16 for people with newer Cloth installed.",
+    "cloth-config2":    "Same rationale — 13.x spoof broke modern setups.",
+    "architectury":     "REI 16 bundles compatible Architectury as a nested JAR; spoofing to 13.x caused REI to reject its own bundle.",
+    "architectury-api": "Alias of above.",
+    "roughlyenoughitems": "Current versions satisfy most dependent checks naturally.",
+    "rei":               "Alias of above.",
+    "trinkets":          "Users typically install the current version; real version already works.",
+    "curios":            "Same.",
+    "curiosapi":         "Same.",
+    "patchouli":         "Same.",
+    "geckolib":          "Same.",
+    "geckolib3":         "Same.",
+    "geckolib4":         "Same."
+  },
+
+  "_kept_in_v2_why": "These spoofs remain because the real installed version on a 26.1.2 setup is genuinely newer than what most old mods expect. Spoofing DOWN is the correct move here — dependent mods that declare '<X.Y.Z' upper bounds on the core API families will see a plausibly-old version and accept it. A user who installs a current library is actively asking for that library; we're only intervening for mods that lock to historical ranges of CORE platform families.",
+
+  "spoofs": {
+    "fabric-api":   "999.999.999+26.1.2",
+    "fabric":       "999.999.999+26.1.2",
+    "fabricloader": "0.999.999",
+
+    "modmenu":  "11.999.999",
+    "mod-menu": "11.999.999",
+
+    "mixinextras":   "0.999.999",
+    "mixin-extras":  "0.999.999",
+
+    "cardinal-components":          "6.999.999",
+    "cardinal-components-api":      "6.999.999",
+    "cardinal-components-base":     "6.999.999",
+    "cardinal-components-entity":   "6.999.999",
+    "cardinal-components-block":    "6.999.999",
+    "cardinal-components-world":    "6.999.999",
+    "cardinal-components-item":     "6.999.999"
+  }
+}

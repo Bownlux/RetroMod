@@ -1,0 +1,41 @@
+{
+  "retromod.title_screen.button": "RetroMod",
+  "retromod.title_screen.settings": "\u2699",
+
+  "retromod.main.title": "RetroMod",
+  "retromod.main.subtitle": "\ubcc0\ud658\ud560 \ubaa8\ub4dc JAR\ub97c \ub04c\uc5b4 \ub193\uac70\ub098 \uc120\ud0dd\ud558\uc138\uc694",
+  "retromod.main.add_mods": "\ubaa8\ub4dc \ucd94\uac00\u2026",
+  "retromod.main.open_folder": "\ubaa8\ub4dc \ud3f4\ub354 \uc5f4\uae30",
+
+  "retromod.screen.title": "RetroMod - \ubaa8\ub4dc \uad00\ub9ac\uc790",
+  "retromod.screen.add_mods": "\ubcc0\ud658\ud560 \ubaa8\ub4dc \ucd94\uac00",
+  "retromod.screen.full_aot": "\uc804\uccb4 AOT \ubaa8\ub4dc (\ucef4\ud30c\uc77c\uc740 \ub290\ub9ac\uc9c0\ub9cc \uac8c\uc784\uc774 \ube60\ub984)",
+  "retromod.screen.complexity_warning": "%s\uc740 \uc815\uc0c1 \uc791\ub3d9\ud560 \uac00\ub2a5\uc131\uc774 \ub0ae\uc544 RetroMod\uac00 \ubcc0\ud658\ud558\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4. config/retromod/config.json\uc5d0\uc11c \"force_translate_complex\"\ub97c \ud65c\uc131\ud654\ud558\uba74 \uac15\uc81c\ub85c \ubcc0\ud658\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.",
+  "retromod.screen.transform_complete": "\ubcc0\ud658 \uc644\ub8cc! \ubcc0\uacbd \uc0ac\ud56d\uc744 \uc801\uc6a9\ud558\ub824\uba74 Minecraft\ub97c \ub2e4\uc2dc \uc2dc\uc791\ud558\uc138\uc694.",
+  "retromod.screen.no_mods": "\uc120\ud0dd\ub41c \ubaa8\ub4dc\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.",
+  "retromod.screen.transforming": "\ubcc0\ud658 \uc911: %s",
+
+  "retromod.settings.title": "RetroMod \uc124\uc815",
+  "retromod.settings.done": "\uc644\ub8cc",
+  "retromod.settings.add_mods": "\ubaa8\ub4dc \ud3f4\ub354 \uc5f4\uae30",
+  "retromod.settings.on": "\u00a7a\ucf1c\uae30",
+  "retromod.settings.off": "\u00a7c\ub044\uae30",
+
+  "retromod.settings.use_aot": "AOT \ucef4\ud30c\uc77c",
+  "retromod.settings.use_hybrid": "\ud558\uc774\ube0c\ub9ac\ub4dc \ubaa8\ub4dc",
+  "retromod.settings.transform_mixins": "Mixin \ubcc0\ud658",
+  "retromod.settings.transform_refmaps": "Refmap \ubcc0\ud658",
+  "retromod.settings.remap_reflection": "\ub9ac\ud50c\ub809\uc158 \ub9ac\ub9f5",
+  "retromod.settings.polyfills_enabled": "Polyfills",
+  "retromod.settings.verify_transforms": "\ubcc0\ud658 \uac80\uc99d",
+  "retromod.settings.force_translate_complex": "\ubcf5\uc7a1\ud55c \ubcc0\ud658 \uac15\uc81c",
+  "retromod.settings.log_transformations": "\ubcc0\ud658 \ub85c\uadf8 \uae30\ub85d",
+  "retromod.settings.debug": "\ub514\ubc84\uadf8 \ubaa8\ub4dc",
+
+  "retromod.filepicker.title": "RetroMod \u2014 \ubcc0\ud658\ud560 \ubaa8\ub4dc JAR \uc120\ud0dd",
+
+  "retromod.result.success": "\ubcc0\ud658\ub428",
+  "retromod.result.skipped": "\uc774\ubbf8 \ud638\ud658\ub428",
+  "retromod.result.failed": "\uc2e4\ud328",
+  "retromod.result.complex_warning": "\uc791\ub3d9\ud560 \uac00\ub2a5\uc131 \ub0ae\uc74c"
+}

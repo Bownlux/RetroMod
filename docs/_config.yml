@@ -1,0 +1,67 @@
+title: RetroMod
+description: >-
+  Backwards compatibility layer for Minecraft mods — run older mods on
+  newer versions. Supports Fabric, NeoForge, and Forge.
+baseurl: "/RetroMod"
+url: "https://bownlux.github.io"
+
+# Use just-the-docs remote theme — wiki-style sidebar navigation, full-text
+# search, dark/light toggle. Much closer to the Create Wiki look than the
+# default Cayman theme.
+remote_theme: just-the-docs/just-the-docs@v0.10.1
+
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+  - jekyll-sitemap
+
+markdown: kramdown
+highlighter: rouge
+
+# just-the-docs theme configuration
+color_scheme: dark
+search_enabled: true
+search:
+  heading_level: 3
+  previews: 3
+  preview_words_before: 5
+  preview_words_after: 10
+  tokenizer_separator: /[\s\-/]+/
+  rel_url: true
+  button: false
+
+heading_anchors: true
+back_to_top: true
+back_to_top_text: "Back to top"
+
+# GitHub corner in the header
+aux_links:
+  "GitHub":
+    - "https://github.com/Bownlux/RetroMod"
+  "Releases":
+    - "https://github.com/Bownlux/RetroMod/releases"
+  "Issues":
+    - "https://github.com/Bownlux/RetroMod/issues"
+
+aux_links_new_tab: true
+
+# Footer
+footer_content: "RetroMod is released under the <a href=\"https://github.com/Bownlux/RetroMod/blob/main/LICENSE\">MIT License</a>. Copyright &copy; 2026 Bownlux."
+
+# SEO
+github:
+  repository_url: https://github.com/Bownlux/RetroMod
+  is_project_page: true
+
+# Callouts (info/warning/etc. boxes)
+callouts_level: quiet
+callouts:
+  warning:
+    title: Warning
+    color: red
+  note:
+    title: Note
+    color: blue
+  tip:
+    title: Tip
+    color: green

@@ -1,0 +1,293 @@
+// RetroMod wiki custom styles — Iris / Create-wiki inspired hero and cards.
+// Loaded by just-the-docs automatically when present at _sass/custom/custom.scss
+
+// ════════════════════════════════════════════════════════════════════════
+// HERO
+// ════════════════════════════════════════════════════════════════════════
+
+.retromod-hero {
+  margin: -2rem -1.5rem 2rem;
+  padding: 4rem 2rem 3rem;
+  background:
+    radial-gradient(ellipse at top left,  rgba(120, 180, 255, 0.25), transparent 60%),
+    radial-gradient(ellipse at top right, rgba(180, 120, 255, 0.25), transparent 60%),
+    linear-gradient(135deg, #1a1d29 0%, #0f1117 100%);
+  color: #fff;
+  border-radius: 0 0 1rem 1rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+    pointer-events: none;
+  }
+}
+
+.retromod-hero-inner {
+  position: relative;
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.retromod-hero-title {
+  font-size: 4rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.5rem;
+  background: linear-gradient(90deg, #8ab4ff, #c4a5ff);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+          color: transparent;
+  line-height: 1.1;
+}
+
+.retromod-hero-tagline {
+  font-size: 1.5rem;
+  font-weight: 500;
+  margin: 0 0 1rem;
+  color: #e8eaf0;
+}
+
+.retromod-hero-subtitle {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  margin: 0 auto 2rem;
+  max-width: 640px;
+  color: #b8bac4;
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Buttons
+// ────────────────────────────────────────────────────────────────────────
+
+.retromod-hero-cta {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 2.5rem;
+}
+
+.retromod-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none !important;
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+
+  &:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.retromod-btn-primary {
+  background: linear-gradient(135deg, #6c8cff, #9c7cff);
+  color: #fff !important;
+  box-shadow: 0 4px 16px rgba(108, 140, 255, 0.35);
+
+  &:hover {
+    box-shadow: 0 6px 20px rgba(108, 140, 255, 0.5);
+  }
+}
+
+.retromod-btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+}
+
+.retromod-btn-ghost {
+  background: transparent;
+  color: #b8bac4 !important;
+
+  &:hover {
+    color: #fff !important;
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Stats strip
+// ────────────────────────────────────────────────────────────────────────
+
+.retromod-hero-stats {
+  display: flex;
+  justify-content: center;
+  gap: 3rem;
+  flex-wrap: wrap;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.retromod-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.retromod-stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+
+.retromod-stat-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8b8d97;
+  margin-top: 0.25rem;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// FEATURE GRID
+// ════════════════════════════════════════════════════════════════════════
+
+.retromod-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin: 2rem 0 3rem;
+}
+
+.retromod-feature-card {
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  background: var(--color-bg-2, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  transition: transform 0.15s, border-color 0.15s;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: rgba(140, 170, 255, 0.4);
+  }
+
+  h3 {
+    margin: 0.5rem 0 0.5rem;
+    font-size: 1.1rem;
+  }
+
+  p {
+    margin: 0;
+    color: var(--color-text-muted, #a0a2ad);
+    font-size: 0.925rem;
+    line-height: 1.5;
+  }
+}
+
+.retromod-feature-icon {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// EXPLORE CARDS
+// ════════════════════════════════════════════════════════════════════════
+
+.retromod-explore {
+  margin: 3rem 0;
+
+  h2 {
+    margin-bottom: 1.25rem;
+  }
+}
+
+.retromod-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.75rem;
+}
+
+.retromod-link-card {
+  display: block;
+  padding: 1.25rem;
+  border-radius: 0.5rem;
+  text-decoration: none !important;
+  background: var(--color-bg-2, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+  color: inherit !important;
+  transition: transform 0.15s, border-color 0.15s, background 0.15s;
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: rgba(140, 170, 255, 0.4);
+    background: rgba(140, 170, 255, 0.05);
+  }
+
+  h3 {
+    margin: 0 0 0.4rem;
+    font-size: 1rem;
+    color: var(--color-text);
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--color-text-muted, #a0a2ad);
+    line-height: 1.5;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// CTA STRIP (bottom of home page)
+// ════════════════════════════════════════════════════════════════════════
+
+.retromod-cta-strip {
+  margin: 3rem -1.5rem 0;
+  padding: 2.5rem 2rem;
+  border-radius: 1rem 1rem 0 0;
+  background: linear-gradient(135deg, rgba(108, 140, 255, 0.12), rgba(156, 124, 255, 0.12));
+  text-align: center;
+
+  h2 {
+    margin: 0 0 0.75rem;
+  }
+
+  p {
+    max-width: 640px;
+    margin: 0 auto 1.5rem;
+    color: var(--color-text-muted, #a0a2ad);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// RESPONSIVE
+// ════════════════════════════════════════════════════════════════════════
+
+@media (max-width: 600px) {
+  .retromod-hero {
+    padding: 3rem 1rem 2rem;
+  }
+
+  .retromod-hero-title {
+    font-size: 2.75rem;
+  }
+
+  .retromod-hero-tagline {
+    font-size: 1.2rem;
+  }
+
+  .retromod-hero-stats {
+    gap: 1.5rem;
+  }
+
+  .retromod-stat-value {
+    font-size: 1.4rem;
+  }
+}

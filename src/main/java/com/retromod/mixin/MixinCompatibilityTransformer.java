@@ -328,6 +328,44 @@ public class MixinCompatibilityTransformer {
                     }
                 }
             }
+
+            // Downgrade CAPTURE_FAILHARD to CAPTURE_FAILSOFT.
+            //
+            // WHY: "locals = LocalCapture.CAPTURE_FAILHARD" makes the mixin
+            // framework CRASH the JVM when the local-variable table at the
+            // injection site doesn't match the mixin's expected shape. MC
+            // rewrites method bodies between versions — new locals are added,
+            // removed, or reordered — so a mixin that targeted an older MC's
+            // LVT will often find the new layout incompatible.
+            //
+            // With FAILHARD this manifests as a fatal BootstrapMethodError
+            // at MC class load time and MC refuses to boot. Seen in the wild
+            // with architectury.mixins.json:MixinFallingBlockEntity on 26.1
+            // because FallingBlockEntity.tick() got a ServerLevel local added.
+            //
+            // FAILSOFT keeps the same runtime check but treats a mismatch as
+            // "skip this injection" with a warning, so the mod's specific
+            // feature hooked there is dead but MC launches and everything
+            // else loads. That's the correct tradeoff for "run old mods on
+            // new MC" — best-effort, not crash-everything-when-anything-drifts.
+            //
+            // The annotation attribute format for enum values is a String[]
+            // where [0] is the enum descriptor and [1] is the constant name.
+            if ("locals".equals(key) && value instanceof String[] enumValue
+                    && enumValue.length == 2
+                    && "Lorg/spongepowered/asm/mixin/injection/callback/LocalCapture;".equals(enumValue[0])
+                    && "CAPTURE_FAILHARD".equals(enumValue[1])) {
+                // Allocate a NEW String[] — don't mutate the value in place.
+                // ASM can hand back the same interned array across multiple
+                // AnnotationNode instances if classnodes are reused during the
+                // iterative-loop's repeated passes. Mutating one instance's
+                // slot would also rewrite every other AnnotationNode pointing
+                // at it, which can make the second pass see no CAPTURE_FAILHARD
+                // and decide the class is "stable" when it isn't.
+                annotation.values.set(i + 1, new String[]{enumValue[0], "CAPTURE_FAILSOFT"});
+                modified = true;
+                LOGGER.debug("Downgraded CAPTURE_FAILHARD to CAPTURE_FAILSOFT in mixin annotation");
+            }
         }
 
         // Set require=0 on all injection annotations to make them soft-fail.

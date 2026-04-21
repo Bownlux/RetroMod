@@ -1,0 +1,41 @@
+{
+  "retromod.title_screen.button": "RetroMod",
+  "retromod.title_screen.settings": "\u2699",
+
+  "retromod.main.title": "RetroMod",
+  "retromod.main.subtitle": "Mod-JARs ablegen oder ausw\u00e4hlen",
+  "retromod.main.add_mods": "Mods hinzuf\u00fcgen\u2026",
+  "retromod.main.open_folder": "Mods-Ordner \u00f6ffnen",
+
+  "retromod.screen.title": "RetroMod - Mod-Manager",
+  "retromod.screen.add_mods": "Mods zum Umwandeln hinzuf\u00fcgen",
+  "retromod.screen.full_aot": "Voller AOT-Modus (langsamere Kompilierung, schnelleres Spiel)",
+  "retromod.screen.complexity_warning": "RetroMod hat %s nicht umgewandelt, da es wahrscheinlich nicht funktioniert. Aktiviere \"force_translate_complex\" in config/retromod/config.json, um die Umwandlung zu erzwingen.",
+  "retromod.screen.transform_complete": "Umwandlung abgeschlossen! Starte Minecraft neu, um die \u00c4nderungen zu \u00fcbernehmen.",
+  "retromod.screen.no_mods": "Keine Mods ausgew\u00e4hlt.",
+  "retromod.screen.transforming": "Wandle um: %s",
+
+  "retromod.settings.title": "RetroMod-Einstellungen",
+  "retromod.settings.done": "Fertig",
+  "retromod.settings.add_mods": "Mods-Ordner \u00f6ffnen",
+  "retromod.settings.on": "\u00a7aAN",
+  "retromod.settings.off": "\u00a7cAUS",
+
+  "retromod.settings.use_aot": "AOT-Kompilierung",
+  "retromod.settings.use_hybrid": "Hybrid-Modus",
+  "retromod.settings.transform_mixins": "Mixins umwandeln",
+  "retromod.settings.transform_refmaps": "Refmaps umwandeln",
+  "retromod.settings.remap_reflection": "Reflexion umleiten",
+  "retromod.settings.polyfills_enabled": "Polyfills",
+  "retromod.settings.verify_transforms": "Umwandlungen pr\u00fcfen",
+  "retromod.settings.force_translate_complex": "Komplexe Umwandlung erzwingen",
+  "retromod.settings.log_transformations": "Umwandlungen protokollieren",
+  "retromod.settings.debug": "Debug-Modus",
+
+  "retromod.filepicker.title": "RetroMod \u2014 Mod-JARs zum Umwandeln ausw\u00e4hlen",
+
+  "retromod.result.success": "Umgewandelt",
+  "retromod.result.skipped": "Bereits kompatibel",
+  "retromod.result.failed": "Fehlgeschlagen",
+  "retromod.result.complex_warning": "Wahrscheinlich nicht funktionsf\u00e4hig"
+}

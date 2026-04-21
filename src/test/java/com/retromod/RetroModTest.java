@@ -174,18 +174,128 @@ public class RetroModTest {
     @DisplayName("Class references are correctly rewritten")
     void testClassReferenceRewrite() {
         transformer.registerClassRedirect("test/OldType", "test/NewType");
-        
+
         // Create test bytecode with OldType reference
         byte[] original = createTestClassWithTypeRef("test/OldType");
-        
+
         // Transform it
         byte[] transformed = transformer.transformClass(original, "test/TestClass");
-        
+
         // Verify class reference was rewritten
         assertTrue(containsClassRef(transformed, "test/NewType"),
             "Transformed class should reference NewType");
     }
-    
+
+    // =========================================================
+    // ITERATIVE TRANSFORM LOOP TESTS
+    // =========================================================
+    // Verify that transformClass() runs multiple passes when chained redirects
+    // are registered (A -> B, B -> C) and terminates safely on cycles (A -> B, B -> A).
+    //
+    // The iterative loop is what lets RetroMod handle shim chains where one shim's
+    // target is itself the source of another shim's redirect. Single-pass visitors
+    // would only catch the first hop.
+
+    @Test
+    @DisplayName("Iterative loop resolves chained redirects (A->B->C)")
+    void testIterativeLoopChainedRedirects() {
+        // Use unique class names so we don't interfere with other tests that
+        // share the singleton transformer instance.
+        transformer.registerMethodRedirect(
+            "test/chain/HopA", "call", "()V",
+            "test/chain/HopB", "call", "()V"
+        );
+        transformer.registerMethodRedirect(
+            "test/chain/HopB", "call", "()V",
+            "test/chain/HopC", "call", "()V"
+        );
+
+        byte[] original = createStaticCallerClass("test/chain/Caller", "test/chain/HopA", "call");
+
+        transformer.resetIterationMetrics();
+        byte[] transformed = transformer.transformClass(original, "test/chain/Caller");
+
+        // Final call should be to HopC — the end of the chain — not HopA or HopB.
+        assertTrue(containsMethodCall(transformed, "test/chain/HopC", "call"),
+                "Expected final call site to be HopC.call after chain resolution");
+        assertFalse(containsMethodCall(transformed, "test/chain/HopA", "call"),
+                "HopA.call should no longer appear after iteration");
+        assertFalse(containsMethodCall(transformed, "test/chain/HopB", "call"),
+                "HopB.call should no longer appear after iteration");
+
+        // Metrics: chained redirects should register as "needed multiple passes".
+        // Pass 1 rewrites HopA -> HopB. Pass 2 rewrites HopB -> HopC. Pass 3 stable.
+        // That's 2 active passes, which triggers the counter.
+        assertEquals(1, transformer.getClassesNeedingMultiplePasses(),
+                "Chained redirect should count as needing multiple passes");
+        assertTrue(transformer.getTotalPassesPerformed() >= 3,
+                "Should have performed at least 3 passes for a two-hop chain");
+        assertEquals(0, transformer.getClassesHittingIterationCap(),
+                "Non-cyclic chain must never hit the iteration cap");
+    }
+
+    @Test
+    @DisplayName("Iterative loop terminates safely on redirect cycles (A->B->A)")
+    void testIterativeLoopCycleTermination() {
+        // Cycle: two redirects that point at each other. A naive loop would
+        // oscillate forever. The iteration cap guarantees we terminate.
+        transformer.registerMethodRedirect(
+            "test/cycle/ClassA", "call", "()V",
+            "test/cycle/ClassB", "call", "()V"
+        );
+        transformer.registerMethodRedirect(
+            "test/cycle/ClassB", "call", "()V",
+            "test/cycle/ClassA", "call", "()V"
+        );
+
+        byte[] original = createStaticCallerClass(
+                "test/cycle/Caller", "test/cycle/ClassA", "call");
+
+        transformer.resetIterationMetrics();
+
+        // Assert the call returns in finite time even with a cycle.
+        // assertTimeoutPreemptively would be stronger, but that requires extra
+        // test infra. The iteration cap of 5 means at most 5 ASM visits — fast.
+        byte[] transformed = assertDoesNotThrow(
+                () -> transformer.transformClass(original, "test/cycle/Caller"),
+                "Transform must not throw even with cyclic redirects");
+        assertNotNull(transformed, "Must return some output, not null");
+
+        // We should have hit the cap. The last-pass output is returned as-is,
+        // which will oscillate between ClassA and ClassB — either is acceptable
+        // for this test; what matters is termination.
+        assertEquals(1, transformer.getClassesHittingIterationCap(),
+                "Cyclic redirect must register as hitting the iteration cap");
+    }
+
+    @Test
+    @DisplayName("Single-hop redirects stabilize in one active pass")
+    void testIterativeLoopSingleHopStability() {
+        transformer.registerMethodRedirect(
+            "test/single/From", "call", "()V",
+            "test/single/To", "call", "()V"
+        );
+
+        byte[] original = createStaticCallerClass(
+                "test/single/Caller", "test/single/From", "call");
+
+        transformer.resetIterationMetrics();
+        byte[] transformed = transformer.transformClass(original, "test/single/Caller");
+
+        assertTrue(containsMethodCall(transformed, "test/single/To", "call"),
+                "Single hop should still be applied");
+
+        // Single-hop case: pass 1 rewrites, pass 2 verifies. 1 active pass.
+        // Should NOT trigger the "multiple passes" counter — that's reserved for
+        // actual chained redirects (2+ active passes).
+        assertEquals(0, transformer.getClassesNeedingMultiplePasses(),
+                "Single-hop redirect should not register as chained");
+        assertEquals(0, transformer.getClassesHittingIterationCap(),
+                "Single-hop redirect must never hit the cap");
+        assertEquals(2, transformer.getTotalPassesPerformed(),
+                "Single-hop should take exactly 2 passes: one to rewrite, one to verify stable");
+    }
+
     // =========================================================
     // MIXIN COMPATIBILITY TESTS
     // =========================================================
@@ -259,6 +369,33 @@ public class RetroModTest {
         return cw.toByteArray();
     }
     
+    /**
+     * Create a minimal class whose one method invokes a static call elsewhere.
+     * Used by the iterative-loop tests to produce a predictable call site that
+     * we can then drive through registered method redirects.
+     *
+     * <p>Using {@code INVOKESTATIC} avoids the {@code NEW/DUP/INVOKESPECIAL} setup
+     * that {@link #createTestClass()} uses — it's just a clean single-instruction
+     * call that maps 1:1 to what the tests want to verify.</p>
+     */
+    private byte[] createStaticCallerClass(String className, String calleeOwner, String calleeName) {
+        ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
+        cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, className, null,
+                "java/lang/Object", null);
+
+        MethodVisitor mv = cw.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "run", "()V", null, null);
+        mv.visitCode();
+        mv.visitMethodInsn(Opcodes.INVOKESTATIC, calleeOwner, calleeName, "()V", false);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
     private byte[] createTestClassWithTypeRef(String typeName) {
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
         cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "test/TestClass", null, 

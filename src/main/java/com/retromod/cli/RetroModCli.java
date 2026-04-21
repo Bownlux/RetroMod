@@ -29,6 +29,7 @@ import java.util.*;
  *   transform <mod.jar>         - Transform a mod for the target version
  *   aot <mod.jar>               - AOT compile a mod (embed shims, pre-transform)
  *   batch <mods-folder>         - Process all mods in a folder
+ *   autofix <log-file> [--apply] - Analyze crash log, suggest/apply fixes
  *   diff <v1> <v2>              - Show API differences between versions
  *   archive <action>            - Manage API archives
  *   shims                       - List all registered shims
@@ -78,6 +79,8 @@ public class RetroModCli {
                 case "prepare" -> prepareCommand(args);
                 case "score" -> scoreCommand(args);
                 case "devhelp", "migrate" -> devhelpCommand(args);
+                case "autofix" -> autofixCommand(args);
+                case "gaps" -> gapsCommand(args);
                 case "help", "-h", "--help" -> printUsage();
                 case "version", "-v", "--version" -> 
                     System.out.println("RetroMod CLI v" + VERSION + " (Target: MC " + TARGET_MC_VERSION + ")");
@@ -413,6 +416,7 @@ public class RetroModCli {
             }
             transformJar(modPath, outputPath, transformer, info);
             System.out.println("✓ Transformation complete (all shims applied): " + outputPath);
+            verifyIfRequested(outputPath, modPath.getFileName().toString(), args);
             return;
         }
 
@@ -435,6 +439,7 @@ public class RetroModCli {
 
         transformJar(modPath, outputPath, transformer, info);
         System.out.println("✓ Transformation complete: " + outputPath);
+        verifyIfRequested(outputPath, modPath.getFileName().toString(), args);
     }
     
     /**
@@ -727,11 +732,19 @@ public class RetroModCli {
             var entries = inJar.entries();
             while (entries.hasMoreElements()) {
                 var entry = entries.nextElement();
-                outJar.putNextEntry(new java.util.jar.JarEntry(entry.getName()));
+                // Re-validate entry names on the output side. safeEntryName
+                // throws on path-traversal patterns (../, absolute paths, etc.)
+                // so a malicious input JAR can't propagate a bad name into
+                // our freshly-written output JAR.
+                outJar.putNextEntry(new java.util.jar.JarEntry(
+                        com.retromod.util.ZipSecurity.safeEntryName(entry.getName())));
 
                 if (!entry.isDirectory()) {
                     try (var is = inJar.getInputStream(entry)) {
-                        byte[] data = is.readAllBytes();
+                        // Bounded read — defends against a mod JAR with a
+                        // falsified-size entry that would otherwise allocate
+                        // gigabytes when decompressed.
+                        byte[] data = com.retromod.util.ZipSecurity.safeReadAllBytes(is);
 
                         if (entry.getName().endsWith(".class") &&
                                 shouldTransformClass(entry.getName(), info)) {
@@ -764,6 +777,27 @@ public class RetroModCli {
                 }
 
                 outJar.closeEntry();
+            }
+        }
+    }
+
+    /**
+     * Run verification if --verify flag is present or verify_transforms config is on.
+     */
+    private static void verifyIfRequested(Path outputJar, String modName, String[] args) {
+        boolean verify = TransformVerifier.isEnabled();
+        for (String arg : args) {
+            if ("--verify".equals(arg)) { verify = true; break; }
+        }
+        if (!verify) return;
+
+        var result = TransformVerifier.verifyAndReport(outputJar, modName, TARGET_MC_VERSION);
+        if (result.passed()) {
+            System.out.println("✓ Verification passed");
+        } else {
+            System.out.println("✗ Verification found " + result.issueCount() + " issue(s)");
+            for (var issue : result.issues()) {
+                System.out.println("  - " + issue.toReadableString(TARGET_MC_VERSION));
             }
         }
     }
@@ -850,10 +884,11 @@ public class RetroModCli {
 
                 java.util.jar.JarEntry entry;
                 while ((entry = jis.getNextJarEntry()) != null) {
-                    jos.putNextEntry(new java.util.jar.JarEntry(entry.getName()));
+                    jos.putNextEntry(new java.util.jar.JarEntry(
+                            com.retromod.util.ZipSecurity.safeEntryName(entry.getName())));
 
                     if (!entry.isDirectory()) {
-                        byte[] data = jis.readAllBytes();
+                        byte[] data = com.retromod.util.ZipSecurity.safeReadAllBytes(jis);
 
                         if (entry.getName().endsWith(".mixins.json") ||
                             entry.getName().endsWith("mixin.json") ||
@@ -955,11 +990,19 @@ public class RetroModCli {
             var entries = inJar.entries();
             while (entries.hasMoreElements()) {
                 var entry = entries.nextElement();
-                outJar.putNextEntry(new java.util.jar.JarEntry(entry.getName()));
+                // Re-validate entry names on the output side. safeEntryName
+                // throws on path-traversal patterns (../, absolute paths, etc.)
+                // so a malicious input JAR can't propagate a bad name into
+                // our freshly-written output JAR.
+                outJar.putNextEntry(new java.util.jar.JarEntry(
+                        com.retromod.util.ZipSecurity.safeEntryName(entry.getName())));
 
                 if (!entry.isDirectory()) {
                     try (var is = inJar.getInputStream(entry)) {
-                        byte[] data = is.readAllBytes();
+                        // Bounded read — defends against a mod JAR with a
+                        // falsified-size entry that would otherwise allocate
+                        // gigabytes when decompressed.
+                        byte[] data = com.retromod.util.ZipSecurity.safeReadAllBytes(is);
 
                         if (entry.getName().equals("fabric.mod.json") ||
                                 entry.getName().equals("quilt.mod.json")) {
@@ -1118,7 +1161,9 @@ public class RetroModCli {
                     var fabricEntry = jarFile.getEntry("fabric.mod.json");
                     if (fabricEntry != null) {
                         try (var is = jarFile.getInputStream(fabricEntry)) {
-                            String json = new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                            String json = new String(
+                                com.retromod.util.ZipSecurity.safeReadAllBytes(is),
+                                java.nio.charset.StandardCharsets.UTF_8);
                             // Simple JSON parsing for mod ID
                             int idStart = json.indexOf("\"id\"");
                             if (idStart > 0) {
@@ -1593,6 +1638,106 @@ public class RetroModCli {
         System.out.printf("| %-" + (w - 2) + "s |%n", text);
     }
 
+    /**
+     * Analyze a crash log or game log and report (or apply) auto-fixes.
+     *
+     * Usage:
+     *   retromod autofix <log-file>           Analyze and print suggested fixes
+     *   retromod autofix <log-file> --apply   Analyze and apply fixes to transformer
+     */
+    private static void autofixCommand(String[] args) throws Exception {
+        if (args.length < 2) {
+            System.err.println("Usage: autofix <log-file> [--apply]");
+            System.err.println();
+            System.err.println("  <log-file>   Path to a crash report or latest.log");
+            System.err.println("  --apply      Apply fixes to the transformer (registers redirects)");
+            System.err.println();
+            System.err.println("Examples:");
+            System.err.println("  retromod autofix logs/latest.log");
+            System.err.println("  retromod autofix crash-reports/crash-2026-04-07.txt --apply");
+            System.exit(1);
+        }
+
+        Path logFile = Path.of(args[1]);
+        boolean apply = args.length > 2 && "--apply".equals(args[2]);
+
+        if (!Files.exists(logFile)) {
+            System.err.println("File not found: " + logFile);
+            System.exit(1);
+        }
+
+        System.out.println();
+        System.out.println("=================================================================");
+        System.out.println("           RetroMod Auto-Fix Analysis");
+        System.out.println("=================================================================");
+        System.out.println();
+        System.out.println("Log file: " + logFile);
+        System.out.println("Mode:     " + (apply ? "APPLY (registering fixes)" : "ANALYZE (dry run)"));
+        System.out.println();
+
+        com.retromod.core.AutoFixEngine engine = new com.retromod.core.AutoFixEngine();
+
+        List<com.retromod.core.AutoFixEngine.AppliedFix> fixes;
+        if (apply) {
+            // Register all shims first so the transformer has context
+            RetroModTransformer transformer = RetroModTransformer.getInstance();
+            for (VersionShim shim : shimRegistry.getAllShims()) {
+                try {
+                    shim.registerRedirects(transformer);
+                } catch (Exception e) {
+                    // Ignore shim errors in CLI mode
+                }
+            }
+            fixes = engine.analyzeAndFix(logFile, transformer);
+        } else {
+            fixes = engine.analyzeOnly(logFile);
+        }
+
+        if (fixes.isEmpty()) {
+            System.out.println("  No actionable errors found in the log.");
+            System.out.println();
+            System.out.println("  If you expected fixes, check that:");
+            System.out.println("  - The log file contains actual error messages");
+            System.out.println("  - The errors are from mod compatibility issues (not config errors)");
+            System.out.println();
+            return;
+        }
+
+        System.out.println("Found " + fixes.size() + " actionable error(s):");
+        System.out.println();
+
+        // Group fixes by error type for cleaner output
+        Map<String, List<com.retromod.core.AutoFixEngine.AppliedFix>> byType = new LinkedHashMap<>();
+        for (com.retromod.core.AutoFixEngine.AppliedFix fix : fixes) {
+            byType.computeIfAbsent(fix.errorType(), k -> new ArrayList<>()).add(fix);
+        }
+
+        for (Map.Entry<String, List<com.retromod.core.AutoFixEngine.AppliedFix>> entry : byType.entrySet()) {
+            System.out.println("-----------------------------------------------------------------");
+            System.out.println("  " + entry.getKey() + " (" + entry.getValue().size() + " occurrence(s))");
+            System.out.println("-----------------------------------------------------------------");
+
+            for (com.retromod.core.AutoFixEngine.AppliedFix fix : entry.getValue()) {
+                System.out.println("  Error:  " + fix.description());
+                System.out.println("  " + (apply ? "Action:" : "Suggestion:") + " " + fix.action());
+                System.out.println();
+            }
+        }
+
+        System.out.println("=================================================================");
+        if (apply) {
+            System.out.println("  " + fixes.size() + " fix(es) applied.");
+            System.out.println("  Retransform your mods to incorporate the fixes:");
+            System.out.println("    retromod batch <mods-folder> --aot");
+        } else {
+            System.out.println("  " + fixes.size() + " fix(es) suggested.");
+            System.out.println("  To apply fixes, re-run with --apply:");
+            System.out.println("    retromod autofix " + logFile + " --apply");
+        }
+        System.out.println("=================================================================");
+        System.out.println();
+    }
+
     private static void printUsage() {
         System.out.println();
         System.out.println("=================================================================");
@@ -1625,6 +1770,7 @@ public class RetroModCli {
         System.out.println();
         System.out.println("Analysis Commands:");
         System.out.println("  score <mod.jar> [options]      Score mod compatibility with 26.1");
+        System.out.println("  autofix <log-file> [--apply]   Analyze crash log, suggest/apply fixes");
         System.out.println();
         System.out.println("Utility Commands:");
         System.out.println("  diff <loader> <v1> <v2>        Show API differences");
@@ -1653,7 +1799,231 @@ public class RetroModCli {
         System.out.println("  # See what API changes you need for updating your own mod");
         System.out.println("  retromod devhelp mymod-1.21.4.jar 26.1");
         System.out.println();
+        System.out.println("  # Cross-mod gap report — what's missing across a whole mods folder");
+        System.out.println("  retromod gaps ./mods --mc-jar minecraft-26.1.jar");
+        System.out.println();
         System.out.println("Target Minecraft version: " + TARGET_MC_VERSION);
         System.out.println();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // GAPS COMMAND — cross-mod gap report
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Produce a cross-mod gap report: for every mod JAR in the given folder,
+     * transform its classes, verify each against the target MC index, and
+     * aggregate unresolved-reference findings ranked by frequency across mods.
+     *
+     * <p>The output is the data-driven prioritization tool for deciding which
+     * polyfills/shims to write next. Example for a 50-mod folder:</p>
+     * <pre>
+     *   Top gaps (ranked by number of mods affected):
+     *     1. (42 mods) [MISSING_CLASS] net/minecraft/util/math/BlockPos
+     *           → net/minecraft/core/BlockPos
+     *     2. (37 mods) [MISSING_CLASS] net/minecraft/util/text/TextFormatting
+     *           → net/minecraft/ChatFormatting
+     *     ...
+     * </pre>
+     *
+     * <p>Doesn't modify any mods on disk — purely diagnostic. Runs transformation
+     * in-memory for each class.</p>
+     *
+     * <p>Usage: {@code retromod gaps <mods-folder> [--mc-jar <path>] [--output <file>]}</p>
+     */
+    private static void gapsCommand(String[] args) throws Exception {
+        if (args.length < 2) {
+            System.err.println("Usage: gaps <mods-folder> [--mc-jar <path>] [--output <file>]");
+            System.err.println("  --mc-jar   Path to target Minecraft JAR (required for verification)");
+            System.err.println("  --output   Write the report to this file instead of stdout");
+            System.exit(1);
+        }
+
+        Path modsFolder = Path.of(args[1]);
+        if (!Files.isDirectory(modsFolder)) {
+            System.err.println("Not a directory: " + modsFolder);
+            System.exit(1);
+        }
+
+        Path mcJar = null;
+        Path outputPath = null;
+        for (int i = 2; i < args.length; i++) {
+            switch (args[i]) {
+                case "--mc-jar" -> {
+                    if (i + 1 >= args.length) { System.err.println("--mc-jar needs a path"); System.exit(1); }
+                    mcJar = Path.of(args[++i]);
+                }
+                case "--output" -> {
+                    if (i + 1 >= args.length) { System.err.println("--output needs a path"); System.exit(1); }
+                    outputPath = Path.of(args[++i]);
+                }
+                default -> System.err.println("Ignoring unknown flag: " + args[i]);
+            }
+        }
+
+        // Enable verification for this run (disabled by default in the transformer).
+        // Setting the property BEFORE touching RetroModTransformer is not enough —
+        // the transformer reads it at class-init time. For CLI use, we add a
+        // public static check instead (see RetroModTransformer.isVerificationEnabled)
+        // and we gate on that. For now, if verification isn't on, we tell the user.
+        if (!RetroModTransformer.isVerificationEnabled()) {
+            System.err.println("NOTE: verification is not enabled.");
+            System.err.println("Re-run with: -Dretromod.verifyTransforms=true");
+            System.err.println("  (e.g. mvn exec:java -Dexec.mainClass=... -Dretromod.verifyTransforms=true ...)");
+            System.exit(2);
+        }
+
+        RetroModTransformer transformer = RetroModTransformer.getInstance();
+        transformer.setTargetMcVersion(TARGET_MC_VERSION);
+
+        // Wire Fabric intermediary→Mojang mappings into the transformer.
+        // Without this, Fabric mods (which ship intermediary class_XXXX /
+        // method_XXXX / field_XXXX names in their bytecode) go through
+        // transformation with those names untouched, then show up as
+        // "missing" in the verifier — a gap report full of noise from
+        // unresolved intermediary names rather than the real gaps.
+        // RetroModPreLaunch does the same wiring for the runtime Fabric
+        // entry; the CLI does it here for consistency.
+        com.retromod.mapping.IntermediaryToMojangMapper.applyTo(transformer);
+
+        if (mcJar != null) {
+            if (!Files.exists(mcJar)) {
+                System.err.println("MC JAR not found: " + mcJar);
+                System.exit(1);
+            }
+            transformer.initFuzzyResolver(mcJar);
+        } else {
+            System.err.println("WARN: no --mc-jar supplied; verification will skip all classes");
+            System.err.println("      (the fuzzy resolver has no MC index to check against)");
+        }
+
+        com.retromod.core.verify.CrossModGapReport aggregated =
+                new com.retromod.core.verify.CrossModGapReport(TARGET_MC_VERSION);
+
+        int modsProcessed = 0;
+        int modsFailed = 0;
+
+        try (var stream = Files.list(modsFolder)) {
+            for (Path jar : (Iterable<Path>) stream::iterator) {
+                if (!jar.toString().endsWith(".jar")) continue;
+                System.out.println("[gaps] scanning " + jar.getFileName());
+                try {
+                    com.retromod.core.verify.VerificationReport perMod = verifyOneMod(transformer, jar);
+                    if (perMod != null) {
+                        aggregated.merge(perMod);
+                        modsProcessed++;
+                    }
+                } catch (Exception e) {
+                    System.err.println("  FAILED: " + e.getMessage());
+                    modsFailed++;
+                }
+            }
+        }
+
+        System.out.println();
+        System.out.printf("Processed %d mod%s (%d failed)%n",
+                modsProcessed, modsProcessed == 1 ? "" : "s", modsFailed);
+        System.out.println();
+
+        StringBuilder out = new StringBuilder();
+        aggregated.writeTo(out);
+
+        if (outputPath != null) {
+            Files.writeString(outputPath, out.toString());
+            System.out.println("Report written to " + outputPath);
+        } else {
+            System.out.println(out);
+        }
+    }
+
+    /**
+     * Open one mod JAR, transform + verify each class, return the per-mod report.
+     * In-memory only — does not write a new JAR.
+     *
+     * <p>Pipeline: (1) read all classes; (2) transform each through the main
+     * pipeline (which includes iterative loop + reflection remapping);
+     * (3) optionally run bridge synthesis; (4) optionally run pattern matching;
+     * (5) run the verifier against the final bytecode. Each step is gated by its
+     * own system-property flag — all must be enabled independently via
+     * {@code -Dretromod.*} to fully exercise this command.</p>
+     */
+    private static com.retromod.core.verify.VerificationReport verifyOneMod(
+            RetroModTransformer transformer, Path jarPath) throws Exception {
+
+        ModVersionInfo info = detector.detectVersion(jarPath);
+        String modId = info != null ? info.modId() : jarPath.getFileName().toString();
+
+        // First pass: enumerate every class in the JAR to build modOwnClasses.
+        // Required so the verifier doesn't flag mod-internal refs as "missing from MC".
+        java.util.Set<String> modOwnClasses = new java.util.HashSet<>();
+        java.util.Map<String, byte[]> classBytesByName = new java.util.LinkedHashMap<>();
+
+        try (java.util.jar.JarFile jar = new java.util.jar.JarFile(jarPath.toFile())) {
+            var entries = jar.entries();
+            while (entries.hasMoreElements()) {
+                var entry = entries.nextElement();
+                if (!entry.getName().endsWith(".class")) continue;
+                String internalName = entry.getName().substring(0, entry.getName().length() - 6);
+                modOwnClasses.add(internalName);
+                try (var in = jar.getInputStream(entry)) {
+                    // Bounded read — a crafted mod could otherwise ship a
+                    // .class entry with declared-size=0 but gigabytes of
+                    // compressed data, OOMing the gaps command.
+                    classBytesByName.put(internalName,
+                            com.retromod.util.ZipSecurity.safeReadAllBytes(in));
+                }
+            }
+        }
+
+        com.retromod.core.verify.VerificationReport report =
+                new com.retromod.core.verify.VerificationReport(
+                        modId, TARGET_MC_VERSION, classBytesByName.size());
+
+        // Pattern-matching context — shared across all class visits for this mod
+        com.retromod.core.pattern.MatchContext matchCtx = null;
+        if (RetroModTransformer.isPatternMatchingEnabled()) {
+            com.retromod.core.verify.McSymbolIndex idx = transformer.getFuzzyResolver() != null
+                    ? new com.retromod.core.verify.FuzzyBackedSymbolIndex(
+                            transformer.getFuzzyResolver(), TARGET_MC_VERSION)
+                    : com.retromod.core.pattern.MatchContext.empty().mcIndex();
+            matchCtx = new com.retromod.core.pattern.MatchContext(
+                    modOwnClasses,
+                    com.retromod.core.verify.LoaderApiRenames.getInstance(),
+                    idx);
+        }
+
+        int bridgeCountBefore = transformer.getBridgeSynthesizer().getBridgesSynthesized();
+
+        // Second pass: transform each class, then apply optional post-processing.
+        //
+        // Parallel execution when -Dretromod.parallelism is > 1 (default = all cores).
+        // Each per-class pipeline is independent: transform, bridge-synth, verify,
+        // and pattern-match all work from the class's own bytes and the shared,
+        // thread-safe redirect tables. The verifier's report accumulator is
+        // thread-safe thanks to its use of synchronizedList-wrapped internals —
+        // we serialize only the final per-mod report aggregation, not the
+        // per-class pipeline steps.
+        final com.retromod.core.pattern.MatchContext finalMatchCtx = matchCtx;
+        com.retromod.core.parallel.RetroModExecutors.parallelForEachEntry(
+                classBytesByName,
+                (className, bytes) -> {
+                    byte[] transformed = transformer.transformClass(bytes, className);
+                    transformed = transformer.synthesizeBridges(transformed, modOwnClasses);
+                    transformer.verifyClass(transformed, className, modOwnClasses, report);
+                    if (finalMatchCtx != null) {
+                        // VerificationReport.addPatternMatch is synchronized
+                        // internally — safe to call from worker threads.
+                        for (var m : transformer.matchPatterns(transformed, finalMatchCtx)) {
+                            report.addPatternMatch(m);
+                        }
+                    }
+                });
+
+        int bridgesThisMod = transformer.getBridgeSynthesizer().getBridgesSynthesized()
+                           - bridgeCountBefore;
+        report.setBridgesSynthesized(bridgesThisMod);
+
+        System.out.println("  " + report.summaryLine());
+        return report;
     }
 }

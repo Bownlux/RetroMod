@@ -272,11 +272,30 @@ public class EnvironmentDetector {
             } catch (ClassNotFoundException ignored) {}
         }
 
-        // Default: OpenGL (current Minecraft default as of 1.21.x)
-        try {
-            Class.forName("com.mojang.blaze3d.platform.GlStateManager");
-            return RenderingBackend.OPENGL;
-        } catch (ClassNotFoundException ignored) {}
+        // Default: OpenGL. Minecraft still uses OpenGL as its only backend
+        // through 26.1.x — Mojang has not shipped Vulkan, Metal, or DirectX
+        // as of this writing. We check several signal classes that identify
+        // "a modern MC render pipeline is running" in order of specificity:
+        //
+        //   1.21.x and older: com.mojang.blaze3d.platform.GlStateManager
+        //   26.1+:            com.mojang.blaze3d.platform.GlStateManager was
+        //                     removed in the rendering refactor; the new
+        //                     entry point is com.mojang.blaze3d.systems.RenderSystem
+        //                     which is present on every 26.1 client.
+        //
+        // Either one existing → OPENGL. If neither exists we really are in
+        // an environment without a known MC rendering surface (dedicated server
+        // minus the SOFTWARE branch above, or an unsupported future version).
+        for (String glSignal : new String[]{
+                "com.mojang.blaze3d.platform.GlStateManager",   // 1.8 – 1.21.x
+                "com.mojang.blaze3d.systems.RenderSystem",       // 1.15+ incl 26.1
+                "com.mojang.blaze3d.opengl.GlStateManager"       // possible 26.1 relocation
+        }) {
+            try {
+                Class.forName(glSignal);
+                return RenderingBackend.OPENGL;
+            } catch (ClassNotFoundException ignored) {}
+        }
 
         return RenderingBackend.UNKNOWN;
     }

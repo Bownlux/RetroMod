@@ -28,17 +28,19 @@ if ! command -v mvn &> /dev/null; then
     exit 1
 fi
 
-# Check for Java 21+
+# Check for Java 25+
+# Note: RetroMod's pom.xml targets Java 25 (release 25). Building with an
+# older JDK fails at the compile step, but failing loudly here is clearer.
 if command -v java &> /dev/null; then
     JAVA_VER=$(java -version 2>&1 | head -1 | cut -d'"' -f2 | cut -d'.' -f1)
-    if [ "$JAVA_VER" -lt 21 ] 2>/dev/null; then
-        echo "ERROR: Java 21 or later is required! You have Java $JAVA_VER."
+    if [ "$JAVA_VER" -lt 25 ] 2>/dev/null; then
+        echo "ERROR: Java 25 or later is required! You have Java $JAVA_VER."
         echo "Install from: https://adoptium.net/"
         exit 1
     fi
     echo "Using Java $JAVA_VER"
 else
-    echo "ERROR: Java not found! Java 21+ is required."
+    echo "ERROR: Java not found! Java 25+ is required."
     echo "Install from: https://adoptium.net/"
     exit 1
 fi

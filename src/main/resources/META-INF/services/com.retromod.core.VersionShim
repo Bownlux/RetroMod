@@ -146,6 +146,10 @@ com.retromod.shim.api.common.GeckoLibApiShim
 com.retromod.shim.api.common.ArchitecturyApiShim
 com.retromod.shim.api.common.PatchouliApiShim
 com.retromod.shim.api.common.CreateModApiShim
+# Runtime version-check spoofer — defeats in-code version range checks like
+# REI's "Cloth Config X is unsupported, please use Y" when fabric.mod.json
+# relaxation alone isn't enough.
+com.retromod.shim.api.common.VersionSpoofShim
 com.retromod.shim.api.common.YaclApiShim
 com.retromod.shim.api.common.JadeWailaApiShim
 com.retromod.shim.api.common.Ae2ApiShim

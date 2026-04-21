@@ -189,7 +189,7 @@
         </resources>
 
         <plugins>
-            <!-- Enforce Java 21+ and Maven 3.8+ before anything else -->
+            <!-- Enforce Java 25+ and Maven 3.8+ before anything else -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>
@@ -269,6 +269,7 @@
                             </archive>
                         </configuration>
                     </execution>
+
                 </executions>
             </plugin>
 
@@ -523,6 +524,46 @@
                         <configuration>
                             <shadedClassifierName>lite-all</shadedClassifierName>
                         </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!--
+          Sign the release JAR with the official RetroMod release key.
+          Only used for official releases. Activate with: mvn package -P sign
+          Requires these properties (usually set in ~/.m2/settings.xml):
+            - retromod.keystore   : path to the JKS/PKCS12 keystore
+            - retromod.key.alias  : alias of the signing key in the keystore
+            - retromod.key.storepass : keystore password
+            - retromod.key.keypass   : key password (often same as storepass)
+          The signature is verified at runtime by SignatureVerifier, purely as
+          informational — unsigned builds still run normally per the MIT license.
+        -->
+        <profile>
+            <id>sign</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-jarsigner-plugin</artifactId>
+                        <version>3.0.0</version>
+                        <executions>
+                            <execution>
+                                <id>sign-release-jar</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                                <configuration>
+                                    <keystore>${retromod.keystore}</keystore>
+                                    <alias>${retromod.key.alias}</alias>
+                                    <storepass>${retromod.key.storepass}</storepass>
+                                    <keypass>${retromod.key.keypass}</keypass>
+                                    <tsa>http://timestamp.digicert.com</tsa>
+                                </configuration>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>

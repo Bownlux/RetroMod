@@ -9,7 +9,7 @@
 
 **Made by the developers of [RevivalSMP.net](https://revivalsmp.net)**
 
-> **This project is currently in beta.** It works for many mods, but some complex mods may still have issues. Always keep backups of your original mod files. Please report bugs on [GitHub Issues](https://github.com/Bownlux/RetroMod/issues).
+> **This project is in beta (v1.0.0-beta.1).** The core pipeline is stable and tested; the transformer still has gaps for deep-integration mods (rendering replacement, heavy mixin mods) that we'll close in follow-up releases. Works well on the common case. Keep backups of your mod JARs — RetroMod writes transformed copies alongside the originals, but anything that touches mod files warrants a backup. Please report issues on [GitHub Issues](https://github.com/Bownlux/RetroMod/issues).
 
 RetroMod is a drop-in Minecraft mod that transforms older mod bytecode at load time — rewriting renamed methods, redirecting removed APIs, and patching Mixin targets — so old mods just work. Supports **Fabric**, **NeoForge**, and **Forge** with version shims covering Minecraft 1.12.2 all the way through 26.1.
 
@@ -51,34 +51,69 @@ RetroMod is a drop-in Minecraft mod that transforms older mod bytecode at load t
 
 ## Key Features
 
-- **534+ Bytecode Redirects** — Class, method, field, constructor, and field-to-accessor redirects across all three loaders
-- **Polyfill System** — 72+ reimplementations of removed APIs across Fabric, Forge, NeoForge, vanilla MC, and third-party mods
-- **Font & Rendering Bridge** — Old Font.draw/drawShadow and RenderSystem calls bridged to 26.1's new rendering APIs
-- **Compatibility Score** — CLI tool (`retromod score <mod.jar>`) analyzes any Fabric/Forge/NeoForge mod and shows a compatibility percentage
-- **Mixin Compatibility** — Transforms `@Inject`, `@Redirect`, `@Shadow`, `@Accessor` targets to match renamed classes
-- **Hybrid AOT/JIT** — Pre-transforms mods at first launch, JIT fallback for edge cases
-- **API Embedding** — Removed APIs are bundled as shim classes directly into mod JARs
-- **Reflection Remapping** — Intercepts `Class.forName()` and `Method.invoke()` calls
-- **API Version Relaxation** — Updates version constraints so mods requiring old API versions work with newer ones
-- **Multi-Loader** — Fabric, NeoForge, and Forge (experimental Forge→NeoForge migration for simple mods)
-- **Multi-Architecture** — x86_64, ARM64/Apple Silicon, and more
-- **Rendering Future-Proofing** — Ready for Vulkan, Metal, and DirectX transitions
+### Transformation pipeline
+- **534+ bytecode redirects** — class, method, field, constructor, and field-to-accessor
+- **145+ version shims** covering every MC release from 1.12.2 (Java 8 era) through 26.1
+- **72+ polyfills** reimplement removed APIs using modern equivalents
+- **Iterative transform loop** — catches chained redirects (A → B → C) that single-pass visitors miss; runs up to 5 passes until bytecode stabilizes
+- **Intermediary → Mojang name mapping** — 26.1 removed all code obfuscation; RetroMod automatically composes 8,800+ intermediary class names with 600+ 26.1 package moves in a single hop
+- **Reflection string remapping** — rewrites MC-typed strings at `Class.forName()`, `getDeclaredMethod()`, `MethodHandles.Lookup.findVirtual()`, and other reflection sinks
+- **Bridge method synthesis** — generates compatibility methods for mods whose overrides would otherwise be orphaned
+- **Smart mixin compatibility** — relocates broken targets, strips broken injections, downgrades `CAPTURE_FAILHARD` → `CAPTURE_FAILSOFT` so one bad mixin can't crash the game
+- **Font & rendering bridge** — old `Font.draw` / `drawShadow` / `RenderSystem` calls bridged to 26.1's new APIs
+- **Runtime version spoofer** — defeats stale in-code version-range checks (REI rejecting Cloth Config, etc.) by returning a compatible version to the asking mod
+
+### Performance & concurrency
+- **Multi-core parallel transforms** — brief all-cores burst during pre-launch (Fabric/Forge/NeoForge) and CLI batch flows; tunable via `-Dretromod.parallelism=N`
+- **Hybrid AOT + JIT** — pre-transforms mods at first launch, JIT fallback for edge cases; AOT cache survives between launches
+- **Pattern matcher with class-shape fingerprinting** — five patterns (BlockEntity-like, DeferredRegister holder, Forge event listener, Mixin target resolver, ApiUsage fingerprint) identify what mod classes do for future shim targeting
+
+### Diagnostics & reporting
+- **Reference verifier** — scans transformed bytecode against the MC symbol index and reports unresolved references per mod
+- **Cross-mod gap report** (`retromod gaps`) — aggregates unresolved references across a whole mods folder, ranked by frequency, so you can see which missing shims would unblock the most mods
+- **Compatibility score** — CLI (`retromod score <mod.jar>`) reports a 0–100 compatibility percentage before you try loading a mod
+- **`retromod devhelp`** — for mod developers, shows every API change you'd need to make to update your mod
+
+### Security
+- **Opt-in AutoFix** — crash-log parsing is gated behind `-Dretromod.autoFix=true` so malicious mods can't poison the redirect table via log-line injection
+- **Zip-bomb protection** — extracts archives with bounded byte counters, not the attacker-controlled `entry.getSize()` field
+- **Zip-slip guards** on both input reads and output writes
+- **Symlink guard** on config file writes
+- **Per-entry read caps** — no unbounded `readAllBytes()` on mod JAR contents
+
+### Mod-loader + API coverage
+- **Multi-loader** — Fabric, NeoForge, Forge (including experimental Forge → NeoForge migration for simple mods)
+- **34+ modding APIs handled** — Fabric API, Mod Menu, Cloth Config, REI, JEI, Curios, Trinkets, Cardinal Components, GeckoLib, Architectury, Create, Patchouli, YACL, Jade/WAILA, Sodium, Iris, EMI, owo-lib, LibGui, Forge Config API Port, and more
+- **Legacy API shims** — Baubles → Curios, NEI → JEI, Thermal/RF → Forge Energy, old WAILA → Jade, LibBlockAttributes → Transfer API
+- **API version relaxation** — 60+ mod IDs whose version constraints get automatically loosened so dep checks don't block loading
+- **API embedding** — removed APIs bundled as shim classes directly into mod JARs when needed
+
+### In-game UI
+- **Title-screen button** — RetroMod gear icon in the top-right of the main menu, opens the mod-management screen
+- **Main screen** — lists your transformed mods, shows status, opens input/backup folders
+- **Settings screen** — toggle feature flags (verify, reflection remap, pattern matching, spoofing)
+- **Cross-loader button injection** — Fabric `ScreenEvents.AFTER_INIT`, NeoForge `ScreenEvent.Init.Post`, Forge event bus
+
+### Platform & architecture
+- **Java 25** compile + runtime target (ASM 9.8+ for class file v69 support)
+- **Multi-architecture** — x86_64, ARM64 / Apple Silicon
+- **Rendering future-proofing** — detection hooks for Vulkan, Metal, and DirectX transitions
 
 ## Supported Versions
 
 Shims are **chainable** — a 1.12.2 Forge mod can run on 26.1 by applying each shim in sequence. **All intermediate versions** (1.16.2, 1.14.1, 1.15.1, etc.) are supported via fuzzy version matching — mods targeting any version within a range are automatically handled.
 
-| Loader | Shims | Range | Stability |
-|--------|-------|-------|-----------|
-| **Fabric** | 32 | 1.14 → ... → 26.1 → 26.1 | 1.16.5+: Beta, 1.14–1.15: Alpha |
-| **NeoForge** | 18 | 1.20.1 → ... → 26.1 → 26.1 | Beta |
-| **Forge** | 28 | 1.12.2 → ... → 1.20 → 1.21 (NeoForge*) → ... → 26.1 → 26.1 | 1.16.5+: Beta, 1.12–1.15: Alpha |
+| Loader | Shims | Range | Per-chain maturity |
+|--------|-------|-------|--------------------|
+| **Fabric** | 32 | 1.14 → ... → 26.1 → 26.1 | 1.16.5+: Stable, 1.14–1.15: Experimental |
+| **NeoForge** | 18 | 1.20.1 → ... → 26.1 → 26.1 | Stable |
+| **Forge** | 28 | 1.12.2 → ... → 1.20 → 1.21 (NeoForge*) → ... → 26.1 → 26.1 | 1.16.5+: Stable, 1.12–1.15: Experimental |
 
 > **Fuzzy version matching:** If a mod targets an intermediate version like 1.16.2 or 1.14.3, RetroMod automatically resolves it to the nearest milestone shim. This means every MC version from 1.12.2 to 26.1 is supported, even versions without their own dedicated shim.
 
-> **Alpha versions (1.12.2–1.15.2):** These cover massive Minecraft changes like "The Flattening" (1.12→1.13) where every block ID, entity name, and NBT class was renamed. Mods from these versions may not fully work and could be unstable. Use at your own risk.
+> **Experimental chains (1.12.2–1.15.2):** These cover massive Minecraft changes like "The Flattening" (1.12→1.13) where every block ID, entity name, and NBT class was renamed. The shim chain works for many mods but is harder to make 100% reliable across that gap — use at your own risk and report what doesn't work.
 >
-> **Beta versions (1.16.5+):** More stable but still being tested. Most mods should work. Always keep backups.
+> **Stable chains (1.16.5+):** Production-tested across our test suite. The vast majority of mods translate cleanly. Backups are still recommended out of habit.
 
 ## API Compatibility
 
@@ -259,6 +294,29 @@ For most users, **gameplay performance is identical to running native mods.** Th
 
 > **Bottom line:** After the first launch, RetroMod has virtually no performance impact. If you want zero overhead, use the CLI to pre-transform everything.
 
+### Parallel transformation & diagnostics
+
+RetroMod uses **all available CPU cores** during the batch transform phase. On a 500-class mod JAR this is the difference between ~2.5 seconds of single-threaded work and ~350 ms of parallel work — a brief all-cores burst then immediate idle. This is exactly what you want for a one-off batch task: get the work done fast, free the machine.
+
+**Diagnostic passes that run by default** (post-transform):
+
+| Pass | What it does | Off-switch |
+|------|--------------|------------|
+| Reference verifier | Scans every transformed class for references to MC APIs that no longer exist; produces a gap report | `-Dretromod.verifyTransforms=false` |
+| Pattern matcher | Detects common class shapes (event listeners, registry holders, mixins, block entities) and builds an API-usage fingerprint per class | `-Dretromod.matchPatterns=false` |
+| Bridge synthesis | Adds bridge methods to mod classes whose overrides would otherwise be orphaned by MC method renames | `-Dretromod.synthesizeBridges=false` |
+
+> ⚠️ **Low-end machine guidance.** If your machine has **less than 4 GB of available RAM** AND you're transforming a **very large mod collection** (100+ mods or mods with very large class counts), the deep `ApiUsageFingerprintPattern` and the parallel executor can briefly use several hundred MB of RAM while it works. If you see the game or shell stuttering during pre-launch:
+> - Turn off the pattern matcher: add `-Dretromod.matchPatterns=false` to your JVM flags.
+> - Or cap the parallel work: `-Dretromod.parallelism=2` limits RetroMod to 2 worker threads (default is all cores).
+> - Or turn off verification too: `-Dretromod.verifyTransforms=false`.
+>
+> These flags leave the core transformation pipeline (iterative loop, reflection remap) running at full speed — they only disable the extra diagnostic passes. Mods still get transformed correctly; you just don't get the per-mod gap report.
+
+### JIT path (Java Agent mode)
+
+Some diagnostics are batch-only by design. When RetroMod runs as a Java Agent (transforming classes one at a time as the JVM loads them), the iterative loop and reflection remapping run, but the reference verifier, pattern matcher, and parallelization do not apply — the agent sees one class at a time with no "whole mod" context. Users who want the full diagnostic report should run the CLI (`retromod gaps`) or use pre-launch batch transformation.
+
 ---
 
 ## Polyfill System (New)
@@ -431,13 +489,13 @@ public class Fabric_X_to_Y implements VersionShim {
 
 ## Known Limitations
 
-> **Beta Notice:** RetroMod is in beta. While it works for many mods, some complex mods may still have issues. Always keep backups.
+> **Release-candidate notice:** RetroMod is in its release-candidate stage. The API and behaviour are locked; we're collecting last-mile feedback before tagging 1.0. The vast majority of mods translate cleanly, but some unusual or extremely complex mods may still surface issues — please report them. Backups are recommended whenever you use any tool that modifies mod JARs.
 >
-> **Alpha Notice (1.12.2–1.15.2):** Support for these very old versions is in alpha. The API changes between these versions were enormous (The Flattening alone renamed hundreds of classes). Expect instability, especially with complex mods. Simple mods have the best chance of working.
+> **Experimental notice (1.12.2–1.15.2):** The shim chain across these very old versions is the hardest part of the project to make 100% reliable. The API changes were enormous (The Flattening alone renamed hundreds of classes). Many mods do work, but expect more rough edges here than elsewhere. Simple mods have the best chance of translating cleanly.
 
 1. Cannot transform already-loaded classes without Java Agent mode
 2. Complex Mixins may need manual shim updates for non-standard patterns
-3. **Alpha:** Legacy mods (1.12.2–1.15.2) may be unstable — especially mods crossing "The Flattening" (1.12→1.13) which renamed every block, entity, and NBT class
+3. **Experimental:** Legacy mods (1.12.2–1.15.2) may be unstable — especially mods crossing "The Flattening" (1.12→1.13) which renamed every block, entity, and NBT class. The shim chain works for many mods here but is harder to make 100% reliable across that gap.
 4. **Forge→NeoForge migration is experimental.** RetroMod can remap basic package names (`net.minecraftforge.*` → `net.neoforged.*`), but NeoForge has diverged significantly from Forge — the capability system, networking, and many internal APIs were completely rewritten, not just renamed. Simple Forge mods may work on NeoForge, but complex mods that deeply use Forge's systems will likely not work.
 5. Cross-loader mods (Forge mod on Fabric) are not supported
 6. Rendering backend shims activate only when MC actually switches backends

@@ -7,7 +7,7 @@ on:
     branches: [ main, develop ]
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -45,6 +45,7 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
           cache: 'maven'
+          check-latest: true
 
       - name: Build project
         if: steps.bypass.outputs.skip != 'true'
