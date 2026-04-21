@@ -479,11 +479,21 @@ public class LegacyModSupport {
                         return extractLiteLoaderVersion(jar.getInputStream(entry));
                     }
                 }
+                case RIFT -> {
+                    // Rift was a short-lived 1.13-only loader with almost no
+                    // mods published. We have no metadata-extraction helper
+                    // for it because nothing uses it in practice. Fall through
+                    // to heuristic detection.
+                }
+                case UNKNOWN -> {
+                    // Loader-detect said "don't know" — skip the metadata path
+                    // and let heuristic detection take over below.
+                }
             }
         } catch (Exception e) {
             // Fall through to heuristic detection
         }
-        
+
         // Heuristic: check class signatures for version hints
         return detectVersionHeuristic(jar);
     }

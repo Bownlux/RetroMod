@@ -24,7 +24,7 @@ import java.util.ServiceLoader;
  * RetroMod allows older Minecraft mods to run on newer versions by:
  * 1. Transforming bytecode to redirect renamed/moved methods
  * 2. Embedding removed APIs directly into mod JARs
- * 3. Providing shim implementations for deleted functionality
+ * 3. Providing shim implementations for deleted functionalty
  */
 public class RetroMod implements ModInitializer {
     

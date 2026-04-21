@@ -28,16 +28,6 @@ If that produces `target/retromod-1.0.0-beta.1.jar`, you're good. Java 25 is req
 
 Most contributions fall into a handful of well-trodden workflows. Each has a skill file under `.claude/skills/` that walks through the exact steps: which files to touch, what tests to add, common pitfalls.
 
-| Skill | When to use |
-|-------|-------------|
-| `add-version-shim` | Adding support for a new MC version transition (e.g. 1.21.5 → 1.21.6) |
-| `add-polyfill` | Reimplementing a removed API so old mods that use it still work |
-| `mapping-work` | Filling gaps in `IntermediaryToMojangMapper`, or regenerating mappings |
-| `mod-loader-compat` | Fixing loader issues — Fabric rejecting mods, Forge version constraint weirdness, etc. |
-| `test-mod-transform` | End-to-end testing a transform against a real mod |
-| `debug-crash` | Diagnosing a crash from a transformed mod |
-| `build-and-deploy` | Building RetroMod and deploying to a local MC install for testing |
-| `modrinth-api` | Downloading test mods from Modrinth (bulk or targeted) |
 
 If you're using Claude Code, these skills activate automatically based on the task. Otherwise, open the corresponding file under `.claude/skills/` and follow it by hand — they're written to be readable as plain Markdown.
 

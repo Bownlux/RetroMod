@@ -171,6 +171,14 @@ mvn clean package    # Build everything + create dist/ with all JARs
 
 This is what `build.sh` / `build.bat` use internally. Output goes to both `target/` (raw JARs) and `dist/` (ready-to-use JARs).
 
+### Why Maven, not Gradle?
+
+Almost every Minecraft mod on the planet uses Gradle (via Fabric Loom / NeoGradle / ForgeGradle), so this is the first question people usually ask. Short answer: **I prefer Maven.** I find it builds faster on my machine, I hit fewer mysterious "you need to invalidate the Gradle cache and re-import" issues with it, and the configuration is declarative XML I can read top-to-bottom in one sitting instead of a Groovy/Kotlin DSL where half the behavior comes from plugin conventions I have to go look up.
+
+RetroMod is also a bit unusual for a mod — it **doesn't compile against Minecraft at all.** It operates on bytecode reflectively and via ASM. So all the reasons you'd normally reach for Loom (deobfuscation mappings, dev-time MC classpath, intermediary remapping at build time) don't apply here. Maven gives me plain-Java dependencies (ASM, Gson, SLF4J, Fabric Loader as `provided`) and a couple of `maven-jar-plugin` executions for the different build classifiers. That's the whole story — no plugin pipeline to debug when something goes wrong.
+
+None of this is a judgment call on Gradle. Gradle's great at what it's designed for, and Loom specifically is the right tool for the normal "I'm writing a mod against MC" workflow. I'm just not in that workflow, and Maven is a better fit for the shape of this project. If you want to port the build to Gradle, PRs welcome — the dependencies and classifier-JAR wiring are all in `pom.xml` in one place, so it's a straightforward translation.
+
 ---
 
 ## CLI Tool
