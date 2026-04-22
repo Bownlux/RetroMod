@@ -101,6 +101,14 @@ RetroMod is a drop-in Minecraft mod that transforms older mod bytecode at load t
 
 ## Supported Versions
 
+> ⚠️ **Primary target is MC 26.1+.**
+>
+> RetroMod is a single codebase — the iterative transform loop, reference verifier, version spoofer, mixin compatibility passes, parallel executor, reflection remapping, and every other architectural improvement work identically on MC 1.20, 1.21.x, and 26.1. When you download (or rebuild) the latest JAR, pre-26.1 users get the same core pipeline as 26.1 users.
+>
+> What IS 26.1-focused: new shim-table entries, new polyfills, new mod-compatibility work, and testing attention all prioritize the 26.1+ branch going forward. MC 26.1 was the first Minecraft release without code obfuscation — a genuine inflection point for every mod-translation tool — so we're pointing our active development at the post-obfuscation world rather than splitting effort across both.
+>
+> If you're on MC 1.20 – 1.21.x: RetroMod still works, and will continue to. You get every core-pipeline improvement. You just won't see as many *new* mods added to the compatibility table as 26.1 users will. Upgrading to 26.1 is optional but recommended if you want the fullest mod coverage.
+
 Shims are **chainable** — a 1.12.2 Forge mod can run on 26.1 by applying each shim in sequence. **All intermediate versions** (1.16.2, 1.14.1, 1.15.1, etc.) are supported via fuzzy version matching — mods targeting any version within a range are automatically handled.
 
 | Loader | Shims | Range | Per-chain maturity |
