@@ -104,6 +104,15 @@ public class ForgeModTransformer {
 
         LOGGER.info("Checking Forge/NeoForge mod: {}", originalName);
 
+        // Honor mod-author opt-out (META-INF/retromod-opt-out marker file).
+        // See com.retromod.util.OptOutCheck for the convention + override flag.
+        if (com.retromod.util.OptOutCheck.isOptedOut(sourceJar)) {
+            com.retromod.util.OptOutCheck.logSkipped(sourceJar);
+            Path passthrough = outputDir.resolve(originalName);
+            Files.copy(sourceJar, passthrough, StandardCopyOption.REPLACE_EXISTING);
+            return passthrough;
+        }
+
         // Check if mod is already for native version
         String modMcVersion = extractMinecraftVersion(sourceJar);
         if (targetMcVersion.equals(modMcVersion)) {

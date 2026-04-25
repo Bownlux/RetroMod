@@ -1906,6 +1906,15 @@ public class RetroModCli {
         try (var stream = Files.list(modsFolder)) {
             for (Path jar : (Iterable<Path>) stream::iterator) {
                 if (!jar.toString().endsWith(".jar")) continue;
+                // Honor mod-author opt-out before doing any work on the JAR.
+                // Even though `gaps` only reads + verifies (doesn't write a
+                // new JAR), running our verifier on a JAR whose author asked
+                // us to leave it alone is still RetroMod-authored analysis
+                // they didn't ask for. Skip cleanly.
+                if (com.retromod.util.OptOutCheck.isOptedOut(jar)) {
+                    com.retromod.util.OptOutCheck.logSkipped(jar);
+                    continue;
+                }
                 System.out.println("[gaps] scanning " + jar.getFileName());
                 try {
                     com.retromod.core.verify.VerificationReport perMod = verifyOneMod(transformer, jar);

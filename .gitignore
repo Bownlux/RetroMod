@@ -90,7 +90,6 @@ roadmap*
 ROADMAP*
 
 # Modrinth (separate page content, not part of the GitHub repo)
-MODRINTH_GUIDE*
 
 # Local-only Claude skills (testing/deployment helpers, not part of the project)
 .claude/skills/build-and-deploy/
@@ -113,3 +112,4 @@ assets/capes/
 *.bak
 *.tmp
 *.swp
+description.md

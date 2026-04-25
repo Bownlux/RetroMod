@@ -461,6 +461,19 @@ OUTPUT — rewritten bytecode, embedded API shims, polyfill reimplementations, u
 
 ## For Mod Developers
 
+### Opting your mod OUT of RetroMod transformation
+
+If you're a mod author and you'd prefer RetroMod not transform your mod (paid/Patreon mod where transform-introduced bugs would unfairly reflect on you, license that prohibits modification, behavior that requires precise bytecode RetroMod might shim incorrectly, etc.) — RetroMod honors a single opt-out marker.
+
+**How to opt out:** add an empty file at `src/main/resources/META-INF/retromod-opt-out` to your mod's source tree. The build packages it; RetroMod sees it; your JAR passes through `mods/` untouched. No version coordination, no API to track, no surface to maintain.
+
+```bash
+# Fabric / NeoForge / Forge — same path for all three
+touch src/main/resources/META-INF/retromod-opt-out
+```
+
+When RetroMod sees the marker, it logs a one-line notice ("Skipping `<your-jar>` — mod author opted out") and copies the JAR verbatim. The end user can override with `-Dretromod.honorOptOut=false` if they really want to force-transform (e.g., to make an abandoned mod work on a newer MC), but the default is to respect your wishes.
+
 ### Detecting RetroMod
 
 ```java

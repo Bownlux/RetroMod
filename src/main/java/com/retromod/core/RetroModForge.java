@@ -14,6 +14,21 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
+// Imported for the @Mod annotation only. We use the FQN at the annotation site
+// rather than a top-of-file import so the class still compiles when Forge isn't
+// on the classpath (e.g., the standalone CLI build) — Java only resolves
+// annotation classes that actually exist in the compile classpath.
+//
+// The annotation MUST be present at runtime under Forge: javafml's mods.toml
+// declares modId="retromod" and FML's mod scanner refuses to load any JAR that
+// declares mods in mods.toml without a matching @Mod("modId") class. The crash
+// looks like:
+//
+//     The Mod File <jar> has mods that were not found
+//
+// — which is FML's way of saying "I read your mods.toml, then went looking for
+// the corresponding @Mod entry-point class, and couldn't find one."
+
 /**
  * Forge entry point for RetroMod.
  * Works on BOTH clients and dedicated servers!
@@ -48,10 +63,11 @@ import java.nio.file.Paths;
  *   - RetroMod auto-transforms on startup
  *   - Warnings logged to console
  */
+@net.minecraftforge.fml.common.Mod("retromod")
 public class RetroModForge {
-    
+
     private static final Logger LOGGER = LoggerFactory.getLogger("RetroMod");
-    
+
     public RetroModForge() {
         LOGGER.info("RetroMod initializing on Forge...");
 

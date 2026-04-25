@@ -128,9 +128,21 @@ public class FabricModTransformer {
         String baseName = originalName.replace(".jar", "");
         String outputName = baseName + "-retromod.jar";
         Path outputJar = outputDir.resolve(outputName);
-        
+
         LOGGER.info("Checking Fabric mod: {}", originalName);
-        
+
+        // Honor mod-author opt-out: if the JAR contains the
+        // META-INF/retromod-opt-out marker, copy it through to the output
+        // folder unchanged so the mod still loads, but skip ALL of our
+        // transformation work. See com.retromod.util.OptOutCheck for the
+        // mechanism + override flag.
+        if (com.retromod.util.OptOutCheck.isOptedOut(sourceJar)) {
+            com.retromod.util.OptOutCheck.logSkipped(sourceJar);
+            Path passthrough = outputDir.resolve(originalName);
+            Files.copy(sourceJar, passthrough, StandardCopyOption.REPLACE_EXISTING);
+            return passthrough;
+        }
+
         // IMPORTANT: Check if mod is already for native version
         String modMcVersion = extractMinecraftVersion(sourceJar);
         if (isNativeVersionMod(modMcVersion)) {
