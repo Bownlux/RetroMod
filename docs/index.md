@@ -66,7 +66,12 @@ The wiki is small but covers the things people ask about most.
 
 ## Why I made this
 
-I run a Minecraft server with friends, and Mojang ships a major MC release every year or two that breaks half the mod loadout we'd been using. Manually updating mods means waiting for every author to ship a port, or porting it yourself. Most of the time the actual API changes are mechanical — a class moved, a method got renamed, a field became a getter. RetroMod automates that mechanical work so the mods we already like keep working through MC updates instead of the loadout shrinking every year.
+I run a public Minecraft server on [Revival Hosting](https://revivalsmp.net) — Purpur with mods. Revival's mod runtime pins the server to a specific MC version, and that version usually isn't the latest one. Two problems fall out of that:
+
+1. I'm a step behind on Mojang's own new features until the host catches up.
+2. Worse, the mod loadout fragments — one mod I want only works on 1.21.7, another only on 1.21.1, and no single MC version runs both. Whichever isn't actively maintained is the one I have to drop.
+
+RetroMod fixes the second problem: it translates the older mod's bytecode forward (or backward, within reason) so both mods can sit in the same `mods/` folder without one crashing on load. Most of the time the actual API changes between MC versions are mechanical — a class moved, a method got renamed, a field became a getter — and that's the kind of work a transformer can do without bothering the original author. The first problem I can't help with — Mojang ships when Mojang ships.
 
 It's MIT licensed. If you fork it for your own server, modify it for a use case I haven't thought about, or want to contribute back — all welcome. Issues and PRs both work.
 
