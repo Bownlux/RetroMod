@@ -1767,6 +1767,33 @@ public class FabricModTransformer {
                 }
             }
 
+            // Track entry names we've already written so we don't try to add
+            // the same one twice. Two known sources of collision:
+            //
+            //   1. The source mod ships a class that one of our synthetic
+            //      polyfills also synthesizes. Mods that JIJ-bundle parts of
+            //      Fabric API (e.g. fabric-mining-level-api-v1) can carry a
+            //      loose copy of an API class that the polyfill system
+            //      generates as well.
+            //
+            //   2. The source JAR's central directory itself lists the same
+            //      entry twice — JarFile/ZipFile happily extract both,
+            //      overwriting on disk; on case-insensitive filesystems,
+            //      two same-name entries differing only by case collapse the
+            //      same way.
+            //
+            // Either way, JarOutputStream.putNextEntry throws ZipException
+            // on the second write and the whole transform aborts. The
+            // original mod's bundled class wins over our synthetic one
+            // (the mod was built against its own copy, so that's the shape
+            // it expects — overriding it with our polyfill could break
+            // unrelated things).
+            //
+            // See https://github.com/Bownlux/RetroMod/issues — original
+            // crash reported against "Abridged v2.0.1 Fabric 1.21.11" with
+            // a duplicate entry on FabricMineableTags.class.
+            Set<String> writtenEntries = new HashSet<>();
+
             try (var stream = Files.walk(sourceDir)) {
                 for (Path file : stream.filter(Files::isRegularFile).toList()) {
                     String entryName = sourceDir.relativize(file).toString()
@@ -1774,6 +1801,14 @@ public class FabricModTransformer {
 
                     // Skip manifest (we added our own)
                     if (entryName.equalsIgnoreCase("META-INF/MANIFEST.MF")) {
+                        continue;
+                    }
+
+                    if (!writtenEntries.add(entryName)) {
+                        LOGGER.warn("Skipping duplicate JAR entry from source: {} "
+                                + "(the source mod's central directory lists this "
+                                + "entry more than once — keeping the first copy)",
+                                entryName);
                         continue;
                     }
 
@@ -1788,9 +1823,16 @@ public class FabricModTransformer {
                 }
             }
 
-            // Inject synthetic classes (ASM-generated polyfills with MC-typed fields)
+            // Inject synthetic classes (ASM-generated polyfills with MC-typed fields).
+            // Skip any whose class name was already written from sourceDir — see
+            // the writtenEntries comment block above.
             for (var entry : RetroModTransformer.getInstance().getSyntheticClasses().entrySet()) {
                 String classPath = entry.getKey() + ".class";
+                if (!writtenEntries.add(classPath)) {
+                    LOGGER.debug("Skipping synthetic class {} — source mod already "
+                            + "ships its own copy at the same path", entry.getKey());
+                    continue;
+                }
                 jos.putNextEntry(new JarEntry(classPath));
                 jos.write(entry.getValue());
                 jos.closeEntry();
