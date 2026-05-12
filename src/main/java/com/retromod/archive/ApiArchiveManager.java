@@ -110,32 +110,98 @@ public class ApiArchiveManager {
     
     /**
      * Load an archive into memory cache.
+     *
+     * <p><strong>Network policy:</strong> this method will NEVER initiate a
+     * download on its own. If the archive isn't already present on disk in
+     * {@link #ARCHIVE_DIR}, the call throws {@link IOException} explaining
+     * how to fetch the archive (via the explicit, user-confirmed
+     * {@link #downloadArchiveWithUserConsent(String, String, java.util.function.BooleanSupplier)}
+     * path or by manually placing a JAR in the archive directory).
+     *
+     * <p>This is RetroMod's network policy: a tool that rewrites mod
+     * JARs shouldn't be quietly making outbound HTTP calls in the
+     * background. Auto-downloading on cache miss would do exactly that —
+     * the user runs {@code retromod transform} and the tool silently
+     * reaches out to Maven without asking. The explicit-consent path
+     * makes the user's permission the trigger, not a side effect.
      */
     public void loadArchive(String loaderType, String mcVersion) throws IOException {
         String archiveKey = loaderType + "-" + mcVersion;
-        
+
         if (archiveCache.containsKey(archiveKey)) {
             return; // Already loaded
         }
-        
+
         Path archivePath = getArchivePath(loaderType, mcVersion);
-        
-        // Download if not present
+
         if (!Files.exists(archivePath)) {
-            downloadArchive(loaderType, mcVersion, archivePath);
+            throw new IOException("API archive not present locally for "
+                + loaderType + " " + mcVersion + " at " + archivePath + ". "
+                + "RetroMod does not auto-download archives — see "
+                + "ApiArchiveManager.downloadArchiveWithUserConsent for the "
+                + "explicit-consent download path, or manually place a JAR "
+                + "at the path above.");
         }
-        
+
         // Extract classes from archive
         Map<String, byte[]> classes = extractClasses(archivePath);
         archiveCache.put(archiveKey, classes);
-        
+
         LOGGER.info("Loaded archive {} with {} classes", archiveKey, classes.size());
     }
-    
+
     /**
-     * Download an archived API JAR.
+     * Explicit-consent download path for API archives.
+     *
+     * <p>Unlike the old auto-download from {@code loadArchive}, this method
+     * <em>requires</em> the caller to supply a {@code consentSupplier} that
+     * returns {@code true} only after the user has been informed of:
+     * <ul>
+     *   <li>What's being downloaded (loader + MC version)</li>
+     *   <li>The URL it's being downloaded from</li>
+     *   <li>Approximate size, if known</li>
+     * </ul>
+     * The supplier is invoked AFTER the URL has been resolved and logged,
+     * so the user sees the actual destination before consenting.
+     *
+     * <p>If the supplier returns {@code false}, no network activity occurs.
+     *
+     * <p>This is the only path that may initiate an outbound HTTP request
+     * from {@code ApiArchiveManager}. See {@link #loadArchive} for the
+     * network-policy rationale.
+     *
+     * @return {@code true} if the download succeeded; {@code false} if the
+     *         user declined, the file already existed, or download failed.
      */
-    private void downloadArchive(String loaderType, String mcVersion, Path targetPath) 
+    public boolean downloadArchiveWithUserConsent(String loaderType, String mcVersion,
+                                                    java.util.function.BooleanSupplier consentSupplier)
+            throws IOException {
+        Path archivePath = getArchivePath(loaderType, mcVersion);
+        if (Files.exists(archivePath)) {
+            return false; // Already present — nothing to download
+        }
+
+        String url = getDownloadUrl(loaderType, mcVersion);
+        LOGGER.info("Awaiting user consent to download: {} (for {} {})",
+                url, loaderType, mcVersion);
+
+        if (!consentSupplier.getAsBoolean()) {
+            LOGGER.info("User declined download of {}", url);
+            return false;
+        }
+
+        downloadArchive(loaderType, mcVersion, archivePath);
+        return Files.exists(archivePath);
+    }
+
+    /**
+     * Low-level HTTP download. Must not be called directly — callers go
+     * through {@link #downloadArchiveWithUserConsent(String, String,
+     * java.util.function.BooleanSupplier)} which enforces the consent
+     * contract. The method body itself is unchanged; the consent gate
+     * lives one frame up the call stack.
+     */
+    private void downloadArchive(String loaderType, String mcVersion, Path targetPath)
             throws IOException {
         
         String url = getDownloadUrl(loaderType, mcVersion);
@@ -250,12 +316,31 @@ public class ApiArchiveManager {
     }
     
     /**
-     * Pre-download archives for all known versions.
-     * Can be run at startup to ensure archives are available.
+     * Pre-download archives for all known versions, ONLY after explicit
+     * user consent.
+     *
+     * <p>The {@code consentSupplier} is consulted once before any
+     * downloads kick off — it's expected to surface the full list of
+     * archives and their source URLs to the user and return {@code true}
+     * only if the user agrees. If consent is denied (or the supplier
+     * returns {@code false}), no network activity occurs and the future
+     * completes immediately.
+     *
+     * <p>Like {@link #downloadArchiveWithUserConsent(String, String,
+     * java.util.function.BooleanSupplier)}, this enforces RetroMod's
+     * no-silent-network rule. The pre-existing parameterless overload
+     * would silently kick off ~22 downloads as soon as it was called,
+     * which is exactly the surprise behavior the consent gate exists
+     * to prevent.
      */
-    public CompletableFuture<Void> preloadAllArchives() {
+    public CompletableFuture<Void> preloadAllArchives(java.util.function.BooleanSupplier consentSupplier) {
+        if (!consentSupplier.getAsBoolean()) {
+            LOGGER.info("User declined preload of all API archives");
+            return CompletableFuture.completedFuture(null);
+        }
+
         List<CompletableFuture<Void>> futures = new ArrayList<>();
-        
+
         // Download Fabric API archives
         for (String mcVersion : FABRIC_API_VERSIONS.keySet()) {
             futures.add(CompletableFuture.runAsync(() -> {
@@ -269,7 +354,7 @@ public class ApiArchiveManager {
                 }
             }, downloadExecutor));
         }
-        
+
         // Download NeoForge archives
         for (String mcVersion : NEOFORGE_VERSIONS.keySet()) {
             futures.add(CompletableFuture.runAsync(() -> {
@@ -283,7 +368,7 @@ public class ApiArchiveManager {
                 }
             }, downloadExecutor));
         }
-        
+
         return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
     }
     

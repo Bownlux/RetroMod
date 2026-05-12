@@ -521,7 +521,10 @@ public class RetroMod implements ModInitializer {
 
                   "polyfills_enabled": true,
 
-                  "verify_transforms": true
+                  "verify_transforms": true,
+
+                  "_network_comment": "RetroMod never initiates network downloads without user consent. The flag below is OFF by default — flip it to true to enable the optional Modrinth lookup (queries Modrinth's public API to suggest native versions of mods you're transforming). No JAR files are ever auto-downloaded; the CLI's 'archive download' command is the only path that fetches files, and it prompts before each download.",
+                  "check_for_native_versions": false
                 }
                 """;
         try {

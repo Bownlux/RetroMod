@@ -57,34 +57,79 @@ public class ModrinthVersionChecker {
     
     /**
      * Check if a mod has a native version for the target Minecraft version.
-     * 
+     *
+     * <p><strong>Network policy:</strong> this method is gated on the
+     * {@code check_for_native_versions} config flag, which defaults to
+     * {@code false}. Without the flag set, the method returns
+     * {@link ModrinthResult#notFound()} immediately without any HTTP
+     * activity. RetroMod doesn't make outbound network calls just because
+     * a user opened a settings menu — the user has to flip the flag in
+     * {@code config/retromod/config.json} (or via the in-game settings
+     * screen) to opt in.
+     *
      * @param modJarPath Path to the mod JAR
      * @param targetMcVersion Target Minecraft version (e.g., "1.21.1")
      * @return ModrinthResult with info about native version, or notFound()
      */
     public static ModrinthResult checkForNativeVersion(Path modJarPath, String targetMcVersion) {
+        if (!isUserOptedIn()) {
+            return ModrinthResult.notFound();
+        }
         try {
             // Extract mod info from JAR
             ModInfo info = extractModInfo(modJarPath);
             if (info == null || info.modId == null) {
                 return ModrinthResult.notFound();
             }
-            
+
             // Check cache
             String cacheKey = info.modId + ":" + targetMcVersion;
             if (cache.containsKey(cacheKey)) {
                 return cache.get(cacheKey);
             }
-            
+
             // Search Modrinth by mod ID or name
             ModrinthResult result = searchModrinth(info, targetMcVersion);
             cache.put(cacheKey, result);
-            
+
             return result;
-            
+
         } catch (Exception e) {
             LOGGER.debug("Error checking Modrinth: {}", e.getMessage());
             return ModrinthResult.notFound();
+        }
+    }
+
+    /**
+     * Returns {@code true} only if the user has explicitly opted into
+     * Modrinth lookups by setting {@code check_for_native_versions=true}
+     * in {@code config/retromod/config.json}. JVM system property
+     * {@code -Dretromod.checkForNativeVersions=true} also works as a
+     * short-circuit (handy for testing and for users who manage their
+     * server via flags rather than configs).
+     *
+     * <p>Returns {@code false} (and produces no network traffic) by
+     * default — RetroMod's standing rule is that any outbound network
+     * call has to be explicitly enabled by the user.
+     */
+    private static boolean isUserOptedIn() {
+        // System property short-circuit
+        if (Boolean.getBoolean("retromod.checkForNativeVersions")) {
+            return true;
+        }
+        // Read the config file directly — keep this cheap so we don't
+        // hold any singleton state, and avoid a circular dependency with
+        // RetroMod.java (which we don't want this class to drag in).
+        try {
+            Path cfg = Path.of("config/retromod/config.json");
+            if (!java.nio.file.Files.exists(cfg)) return false;
+            String json = java.nio.file.Files.readString(cfg);
+            var obj = com.google.gson.JsonParser.parseString(json).getAsJsonObject();
+            return obj.has("check_for_native_versions")
+                && obj.get("check_for_native_versions").getAsBoolean();
+        } catch (Exception e) {
+            // Bad/missing config → treat as opted out (safe default).
+            return false;
         }
     }
     

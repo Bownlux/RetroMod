@@ -659,14 +659,26 @@ public class RetroModCli {
         switch (action) {
             case "download" -> {
                 if (args.length < 4) {
-                    System.err.println("Usage: archive download <loader> <version>");
+                    System.err.println("Usage: archive download <loader> <version> [--yes]");
                     System.exit(1);
                 }
                 String loader = args[2];
                 String version = args[3];
-                System.out.println("Downloading " + loader + " API for MC " + version + "...");
-                archiveManager.loadArchive(loader, version);
-                System.out.println("✓ Download complete");
+                boolean autoYes = args.length > 4 && "--yes".equalsIgnoreCase(args[4]);
+
+                // Explicit user-consent download — see ApiArchiveManager
+                // Javadoc for the network-policy rationale. The CLI is
+                // the only entry point allowed to drive this; we prompt
+                // before any network traffic so the user knows exactly
+                // what's being fetched and from where.
+                boolean downloaded = archiveManager.downloadArchiveWithUserConsent(
+                    loader, version,
+                    () -> promptForDownloadConsent(loader, version, autoYes));
+                if (downloaded) {
+                    System.out.println("✓ Download complete");
+                } else {
+                    System.out.println("Skipped — no download performed.");
+                }
             }
             case "list" -> {
                 System.out.println("Cached archives:");
@@ -680,15 +692,81 @@ public class RetroModCli {
                 }
             }
             case "preload" -> {
-                System.out.println("Downloading all known API archives...");
-                archiveManager.preloadAllArchives().join();
-                System.out.println("✓ Preload complete");
+                boolean autoYes = args.length > 2 && "--yes".equalsIgnoreCase(args[2]);
+                archiveManager.preloadAllArchives(() -> promptForPreloadConsent(autoYes)).join();
+                System.out.println("✓ Preload complete (or skipped on user decline)");
             }
             case "clear" -> {
                 archiveManager.clearCache();
                 System.out.println("✓ Cache cleared");
             }
             default -> System.err.println("Unknown action: " + action);
+        }
+    }
+
+    /**
+     * Interactive consent prompt for a single archive download.
+     * Returns true if the user types y / yes. Pass --yes on the command
+     * line to skip the prompt (intended for scripted / CI usage where
+     * the user has already consented at the script-invocation level).
+     */
+    private static boolean promptForDownloadConsent(String loader, String version, boolean autoYes) {
+        System.out.println();
+        System.out.println("────────────────────────────────────────────────────");
+        System.out.println("  RetroMod is about to download a file from the");
+        System.out.println("  internet. This is the only network operation");
+        System.out.println("  RetroMod will perform; it does not initiate any");
+        System.out.println("  other downloads without explicit consent.");
+        System.out.println();
+        System.out.println("  Loader:  " + loader);
+        System.out.println("  MC ver:  " + version);
+        System.out.println("  Source:  Maven (fabricmc.net / neoforged.net /");
+        System.out.println("           minecraftforge.net depending on loader)");
+        System.out.println("────────────────────────────────────────────────────");
+
+        if (autoYes) {
+            System.out.println("  --yes flag passed: proceeding without prompt.");
+            return true;
+        }
+
+        System.out.print("Proceed with download? [y/N] ");
+        try {
+            String line = new java.io.BufferedReader(
+                new java.io.InputStreamReader(System.in)).readLine();
+            return line != null && (line.equalsIgnoreCase("y") || line.equalsIgnoreCase("yes"));
+        } catch (java.io.IOException e) {
+            System.err.println("Could not read response — treating as 'no'.");
+            return false;
+        }
+    }
+
+    /**
+     * Interactive consent prompt for the bulk preload action. Same shape
+     * as the single-download prompt, but lists how many archives will be
+     * fetched so the user can decline a long-running batch.
+     */
+    private static boolean promptForPreloadConsent(boolean autoYes) {
+        System.out.println();
+        System.out.println("────────────────────────────────────────────────────");
+        System.out.println("  RetroMod is about to bulk-download API archives");
+        System.out.println("  for every known MC version (~22 JARs total,");
+        System.out.println("  several MB each). All come from official Maven");
+        System.out.println("  repositories (fabricmc.net / neoforged.net).");
+        System.out.println("────────────────────────────────────────────────────");
+
+        if (autoYes) {
+            System.out.println("  --yes flag passed: proceeding without prompt.");
+            return true;
+        }
+
+        System.out.print("Proceed with preload? [y/N] ");
+        try {
+            String line = new java.io.BufferedReader(
+                new java.io.InputStreamReader(System.in)).readLine();
+            return line != null && (line.equalsIgnoreCase("y") || line.equalsIgnoreCase("yes"));
+        } catch (java.io.IOException e) {
+            System.err.println("Could not read response — treating as 'no'.");
+            return false;
         }
     }
     

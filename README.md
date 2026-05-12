@@ -93,6 +93,15 @@ If you'd rather not touch a command line at all, the in-game flow is the simpler
 - **Symlink guard** on config file writes
 - **Per-entry read caps** — no unbounded `readAllBytes()` on mod JAR contents
 
+### Network policy
+RetroMod's mod runtime **never initiates a network connection without explicit user consent.** Concretely:
+
+- **No file downloads.** The previous auto-download of API archives from Maven has been removed from the mod runtime. The CLI's `archive download` and `archive preload` commands remain available, but each prompts interactively before any HTTP request is made (or accepts a `--yes` flag for scripted use).
+- **Modrinth API lookups are off by default.** The "is there a native version available?" feature that queries Modrinth's public API was previously called automatically during mod scans. It's now gated on the `check_for_native_versions` config flag (default `false`). With the flag off — which is the shipping default — `ModrinthVersionChecker` short-circuits to `notFound()` immediately without any HTTP traffic. Flip the flag in `config/retromod/config.json` (or set `-Dretromod.checkForNativeVersions=true`) if you want the feature.
+- **No telemetry, no update checks, no analytics.** RetroMod does not phone home, does not check for its own updates, does not report errors anywhere on the network.
+
+The principle: a tool that rewrites your mod JARs shouldn't be quietly making outbound network calls in the background. If RetroMod ever reaches the internet, it's because you asked it to — explicitly, in the current run, with full visibility into what it's about to fetch. With every default flag in place, RetroMod is completely offline and works fine on an air-gapped machine.
+
 ### Mod-loader + API coverage
 - **Multi-loader** — Fabric, NeoForge, Forge (including experimental Forge → NeoForge migration for simple mods)
 - **34+ modding APIs handled** — Fabric API, Mod Menu, Cloth Config, REI, JEI, Curios, Trinkets, Cardinal Components, GeckoLib, Architectury, Create, Patchouli, YACL, Jade/WAILA, Sodium, Iris, EMI, owo-lib, LibGui, Forge Config API Port, and more
@@ -436,7 +445,8 @@ Auto-generated on first launch at `config/retromod/config.json`:
   "target_mc_version": "auto",
   "debug": false,
   "dump_bytecode": false,
-  "force_translate_complex": false
+  "force_translate_complex": false,
+  "check_for_native_versions": false
 }
 ```
 
@@ -448,6 +458,7 @@ Auto-generated on first launch at `config/retromod/config.json`:
 | `remap_reflection` | `true` | Intercept reflection calls (Class.forName, Method.invoke) and remap class names |
 | `polyfills_enabled` | `true` | Enable the polyfill system — reimplements removed APIs using modern equivalents so old mods work correctly |
 | `force_translate_complex` | `false` | Force-translate mods that RetroMod deems "unlikely to work" (high complexity score). Enable this if a mod was skipped and you want to try it anyway. |
+| `check_for_native_versions` | `false` | **Opt-in network feature.** When `true`, RetroMod queries Modrinth's public API during mod scans to suggest native versions of mods you're transforming. Off by default — see the [Network policy](#network-policy) section. |
 | `log_level` | `"INFO"` | Logging verbosity: `ERROR`, `WARN`, `INFO`, `DEBUG` |
 | `dump_bytecode` | `false` | Dump transformed bytecode to disk for debugging |
 
