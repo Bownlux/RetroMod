@@ -258,6 +258,7 @@ except Exception as e:
             ;;
         forge)
             rm -f "$TEMP_DIR/fabric.mod.json" 2>/dev/null
+            rm -f "$TEMP_DIR/quilt.mod.json" 2>/dev/null
             rm -f "$TEMP_DIR/META-INF/neoforge.mods.toml" 2>/dev/null
             # Create Forge mods.toml
             mkdir -p "$TEMP_DIR/META-INF"
@@ -299,6 +300,7 @@ TOML
             ;;
         neoforge)
             rm -f "$TEMP_DIR/fabric.mod.json" 2>/dev/null
+            rm -f "$TEMP_DIR/quilt.mod.json" 2>/dev/null
             rm -f "$TEMP_DIR/META-INF/mods.toml" 2>/dev/null
             # Create NeoForge mods.toml
             mkdir -p "$TEMP_DIR/META-INF"

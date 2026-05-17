@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "quilt_loader": {
+    "group": "com.retromod",
+    "id": "retromod",
+    "version": "1.0.0-beta.1",
+    "metadata": {
+      "name": "Retromod",
+      "description": "Backwards compatibility layer for Minecraft mods - run older mods on newer versions. Works on clients AND servers. Made by the Developers of revivalsmp.net.",
+      "contributors": {
+        "Bownlux": "Owner"
+      },
+      "contact": {
+        "homepage": "https://modrinth.com/mod/retromod",
+        "sources": "https://github.com/Bownlux/Retromod",
+        "issues": "https://github.com/Bownlux/Retromod/issues"
+      },
+      "icon": "assets/retromod/icon.png",
+      "license": "MIT"
+    },
+    "intermediate_mappings": "net.fabricmc:intermediary",
+    "entrypoints": {
+      "init": "com.retromod.core.Retromod",
+      "client_init": "com.retromod.core.RetromodClient",
+      "server_init": "com.retromod.core.RetromodServer",
+      "pre_launch": "com.retromod.core.RetromodPreLaunch"
+    },
+    "depends": [
+      {
+        "id": "quilt_loader",
+        "versions": ">=0.20.0"
+      },
+      {
+        "id": "minecraft",
+        "versions": ">=1.21"
+      }
+    ]
+  }
+}

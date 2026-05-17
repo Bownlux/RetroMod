@@ -192,6 +192,14 @@ This builds everything and puts the output in `dist/`:
 
 > There's also `build-all.sh` / `build-all.bat` which builds JARs for **every** MC version × every loader.
 
+### Where is the Quilt build?
+
+If you went looking through `dist/` and noticed there's a `Fabric/`, `Forge/`, and `NeoForge/` folder but no `Quilt/` — that's intentional, not an oversight. Quilt Loader was specifically designed to be Fabric-compatible at the mod-loading level: it runs Fabric mods natively, no translation required.
+
+So **the Fabric build of Retromod works on Quilt out of the box.** Drop `retromod-*-fabric.jar` into a Quilt instance, install QFAPI (Quilted Fabric API), and Retromod loads exactly the same way it does on Fabric. There's no second JAR variant to build because there's nothing different to put in it — a separate "Quilt build" would be the Fabric build with a different filename.
+
+Quilt-*native* mods (the ones shipping with `quilt.mod.json` instead of `fabric.mod.json`) still get translated when you put them in `retromod-input/`. `QuiltModTransformer` handles them and delegates the bytecode work to the same Fabric transformer.
+
 ### Maven Build
 
 ```bash
