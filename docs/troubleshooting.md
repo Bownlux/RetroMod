@@ -109,6 +109,14 @@ This is a **known Retromod gap** (the mixin-extras inner-target rewriter is inco
 
 The relevant known-broken mods so far: anything with a name like "CustomHUD" / "BetterHUD" / "BetterF3" on MC versions much newer than the mod was built for. Anything that ships its own mixins into MC's GUI internals is in this category — the GUI surface changes shape often.
 
+## Forge: "needs language provider javafml:X or above" (e.g. javafml:52)
+
+`javafml` is Forge's Java-mod language provider — the number after the colon is the **Forge loader version**, not a separate library. So `javafml:52` means "Forge 52.x or later"; `javafml:47` means "Forge 47.x or later". Each MC version ships a specific Forge loader version: MC 1.20.1 → Forge 47, MC 1.21 → Forge 51, MC 1.21.1 → Forge 52, MC 26.1+ → Forge 64+.
+
+**If you saw "javafml:52 or above to load We have found 47" on MC 1.20.1 with Retromod 1.0.0-beta.1:** that's a real bug in beta.1 — the Forge `mods.toml` was hardcoded to demand Forge 52+ regardless of MC version, so the MC 1.20.x Forge builds couldn't actually load on the Forge that ships with those MC versions. **Fixed in beta.2.** Update to beta.2 (or later) and the error goes away.
+
+**If you saw this on beta.2+ for a different MC version:** that's unexpected — the per-MC loaderVersion table in `build-all.sh` should match every Forge release. Please [open an issue](https://github.com/Bownlux/Retromod/issues) with your exact MC version and Forge loader version so we can fix the table.
+
 ## "java.util.zip.ZipException: duplicate entry"
 
 Some mods (especially older Forge mods that JIJ-bundled Fabric API modules into a Forge package, or mods built with legacy bundler toolchains) ship JARs whose central directory lists the same entry twice. Retromod's transformer used to crash mid-write on the second occurrence — fixed in **beta.2**.

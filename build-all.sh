@@ -74,6 +74,17 @@ if ! command -v zip &> /dev/null; then
     exit 1
 fi
 
+# Remove any stale JARs from previous builds. Without this, a version bump
+# leaves the OLD version's JARs sitting alongside the new ones in
+# dist/<Loader>/<MC>/, which is confusing when you go to upload to Modrinth
+# (you might pick the wrong one) and bloats the dist/ tree over time.
+#
+# Scope: only delete files matching the retromod naming pattern. Leaves any
+# user-added files (notes, scripts, custom configs) in dist/ untouched.
+if [ -d dist ]; then
+    find dist -name "retromod-*.jar" -type f -delete 2>/dev/null
+fi
+
 # Create output directories
 mkdir -p dist/Fabric
 mkdir -p dist/Forge

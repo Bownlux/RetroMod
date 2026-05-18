@@ -71,6 +71,14 @@ if not exist "%SHADED_JAR%" (
 
 echo   Shaded JAR: %SHADED_JAR% (with bundled dependencies)
 
+REM Remove stale JARs from previous builds (e.g. retromod-1.0.0-beta.1+*.jar
+REM left behind after a version bump). Only deletes the retromod-* naming
+REM pattern — anything else in dist\ is preserved. See build-all.sh for the
+REM rationale.
+if exist dist (
+    for /r dist %%f in (retromod-*.jar) do del /q "%%f" >nul 2>&1
+)
+
 REM Create output directories
 mkdir dist\Fabric 2>nul
 mkdir dist\Forge 2>nul
