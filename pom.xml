@@ -6,7 +6,7 @@
 
     <groupId>com.retromod</groupId>
     <artifactId>retromod</artifactId>
-    <version>1.0.0-beta.3</version>
+    <version>1.0.0-beta.4</version>
     <packaging>jar</packaging>
 
     <name>Retromod</name>
@@ -361,28 +361,34 @@
                             </transformers>
                             <relocations>
                                 <!--
-                                    Relocate every bundled dependency under com.retromod.shaded.
-                                    Forge 1.20.1+ uses strict JPMS module resolution and refuses
-                                    to load if two modules export the same package to a third
-                                    module ("Modules retromod and X export package Y to module
-                                    minecraft"). Forge bundles its own Gson, its own SLF4J, and
-                                    its own ASM; without relocation, our shaded copies collide
-                                    with Forge's copies during module resolution and the whole
-                                    launch dies in BootstrapLauncher.
-
-                                    Bug that motivated adding Gson/SLF4J/toml4j here: a 1.20.1
-                                    Forge user on beta.2 hit
+                                    Relocate Gson, SLF4J, and toml4j under com.retromod.shaded.*
+                                    to avoid the JPMS module-resolution conflict on Forge 1.20.1+
+                                    ("Modules retromod and X export package Y to module minecraft").
+                                    Forge bundles its own Gson + SLF4J as JPMS modules; without
+                                    relocation, the resolver sees two modules claiming the same
+                                    exports and refuses to start. Bug that surfaced this:
                                         java.lang.module.ResolutionException: Modules retromod
                                         and com.google.gson export package com.google.gson.stream
                                         to module minecraft
-                                    Fabric/Quilt/NeoForge don't enforce this as strictly so the
-                                    bug only surfaced on Forge — but relocating defensively
-                                    everywhere means future MC/loader combos can't bite us.
+                                    (reported against beta.2 by a Forge 1.20.1 user).
+
+                                    ASM is INTENTIONALLY NOT relocated. We tried relocating it in
+                                    beta.3 but it caused a worse bug: Forge's EventSubclassTransformer
+                                    runs on the system AppClassLoader and looks up ASM class names
+                                    by string when introspecting our transformer's class hierarchy.
+                                    Our shaded asm classes live only in our mod-classloader, so the
+                                    AppClassLoader-side lookup hits ClassNotFoundException and the
+                                    whole transform pass fails on every Forge runtime. Bug that
+                                    surfaced this:
+                                        Could not find parent com/retromod/shaded/asm/signature/SignatureVisitor
+                                        for class com/retromod/shaded/asm/commons/SignatureRemapper
+                                    (reported by No11290 on beta.3 Forge 1.20.1). All three Minecraft
+                                    loaders bundle a compatible ASM version, so a non-relocated ASM
+                                    resolves against the loader's copy and there's no conflict —
+                                    the JPMS resolver doesn't reject it the way it rejects Gson.
+                                    DO NOT add ASM back into this relocation block without first
+                                    finding a fix for the EventSubclassTransformer side.
                                 -->
-                                <relocation>
-                                    <pattern>org.objectweb.asm</pattern>
-                                    <shadedPattern>com.retromod.shaded.asm</shadedPattern>
-                                </relocation>
                                 <relocation>
                                     <pattern>com.google.gson</pattern>
                                     <shadedPattern>com.retromod.shaded.gson</shadedPattern>

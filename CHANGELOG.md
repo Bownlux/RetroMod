@@ -2,6 +2,25 @@
 
 All user-facing changes to Retromod. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are [semver](https://semver.org/) with the `1.0.0-beta.N` series leading up to stable 1.0.
 
+## [1.0.0-beta.4] — 2026-05-19
+
+Bug-fix release closing out the wave of beta.2/beta.3 issue reports from the early-Modrinth-publish users. Three independent fixes; everyone running beta.2 or beta.3 should upgrade.
+
+### Fixed
+
+- **Forge: AOT crash with `Could not find parent com/retromod/shaded/asm/signature/SignatureVisitor`.** Beta.3's ASM relocation broke Forge's `EventSubclassTransformer`, which runs on the system `AppClassLoader` and looked up the relocated ASM classes by string — but those classes only existed in Retromod's mod-classloader. Every Forge transform pass failed. **Un-relocated ASM** (kept Gson, SLF4J, and toml4j relocated — those are what actually conflict with Forge's JPMS module resolver). Reported by @No11290 on issue #12.
+- **NeoForge: `needs language provider java:26.1 or above to load, we have found 11.0`.** `loaderVersion` in `neoforge.mods.toml` is the **FancyModLoader** version, not the NeoForge version. Our `build-all.sh` was setting it to the MC-version-based number (`[26.1,)` for MC 26.1, etc.) — which doesn't match anything because FML versions don't track MC versions (FML 11.x ships with MC 26.1 NeoForge). Changed to permissive `[1,)`; the actual NeoForge version constraint is in the `[[dependencies.retromod]] modId = "neoforge"` block and is unchanged. Reported by @Derpgamer22 (#9) and @maksmanus (#10).
+- **Fabric: `Failed to read classTweaker file from mod X / Namespace mismatch` crash on launch.** Mods built for one MC era ship classtweaker / accesswidener files with a namespace header (`intermediary` or `official`) that doesn't match the host MC's runtime namespace. The existing remapper only handled `intermediary → official` (so a 1.21.x mod on a 26.1 runtime worked); the reverse direction silently failed and Fabric Loader crashed at launch with `ClassTweakerFormatException`. New behavior: strip the `classTweakers` and `accessWidener` declarations from the mod's `fabric.mod.json` during transformation. The mod loses whatever class-opening the classtweaker provided (some mixin targets may now fail to find their hooks), but the mod *loads* instead of killing the game. That's the correct tradeoff for old-mod-on-new-MC. Reported across issues #11, #13, #14, #15, #16, #17 against satin, azurelib, tidal, dsurround, rubinated_nether, immersive_aircraft, comforts, moonlight, supplementaries.
+
+### Notes for the issue reporters
+
+- **#9, #10 (NeoForge)** — fixed by the loaderVersion change. Re-download beta.4 and the JPMS error goes away.
+- **#11 (4 mods on Fabric 26.1.2)** — three of those mods (immersive_aircraft, comforts, moonlight, supplementaries) likely had classtweaker dependencies via their depend chain; the strip should unblock them. Worth re-testing.
+- **#12 (1.12.2 mods on 1.20.1 Forge)** — the ASM unrelocation should fix the SignatureVisitor crash; 1.12.2 → 1.20.1 is still a massive hop, so individual content mods may have other issues, but at least the AOT pipeline runs to completion.
+- **#13, #14, #15, #16, #17** — directly fixed by the classtweaker strip.
+
+---
+
 ## [1.0.0-beta.3] — 2026-05-18
 
 Single-purpose hotfix release. **Only difference from beta.2 is the shaded-dependency relocation** — no other code changes, no new features.

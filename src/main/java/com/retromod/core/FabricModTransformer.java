@@ -1335,8 +1335,77 @@ public class FabricModTransformer {
         //     mismatch we're already bytecode-translating away.
         updated = stripBreaksAndConflicts(updated);
 
+        // Strip "classTweakers" and "accessWidener" declarations.
+        // These reference files inside the mod JAR whose first line declares
+        // a namespace (intermediary or official). When the mod was built for
+        // one MC era and the target runtime uses a different namespace,
+        // Fabric Loader throws ClassTweakerFormatException at startup before
+        // any mod even gets to load — so the entire game crashes on launch.
+        //
+        // The existing remapAccessWidener helper only handles the intermediary
+        // → official direction (it returns early on "official" files). For
+        // mods built against 1.21.x (official namespace) running on a runtime
+        // that uses intermediary, or other combinations, the rewrite fails
+        // silently and Fabric crashes.
+        //
+        // Stripping the declaration from fabric.mod.json means Fabric Loader
+        // never tries to read the file — no crash. The mod loses whatever
+        // class-opening that classtweaker was providing (some mixin targets
+        // may now fail to find their hooks), but the mod *loads* instead of
+        // killing the game. That's the correct tradeoff for old-mod-on-new-MC.
+        //
+        // Reported in real testing: satin, azurelib, tidal, dsurround,
+        // rubinated_nether, immersive_aircraft, comforts, moonlight,
+        // supplementaries all crashed with "Failed to read classTweaker file
+        // from mod X / Namespace (Y) does not match current runtime namespace
+        // (Z)" before this strip.
+        updated = stripClassTweakers(updated);
+
         Files.writeString(modJson, updated);
         LOGGER.info("Updated fabric.mod.json: {} → {}", originalMcVersion, targetMcVersion);
+    }
+
+    /**
+     * Remove {@code "classTweakers"} (array of strings, newer Fabric) and
+     * {@code "accessWidener"} (single string, older Fabric) from the
+     * fabric.mod.json. See the call-site comment in {@link #updateFabricModJson}
+     * for the full rationale.
+     *
+     * <p>Uses regex matching the same way {@link #stripBreaksAndConflicts}
+     * does, with the same three-variant handling (middle, first, only key in
+     * object) to keep the surrounding JSON valid regardless of where the
+     * stripped field sat in the declaration.
+     */
+    private String stripClassTweakers(String json) {
+        String result = json;
+
+        // classTweakers is an ARRAY of strings: "classTweakers": ["foo.classtweaker"]
+        // [^\]]* permits string content between the brackets but stops at the
+        // closing bracket — same shape as stripBreaksAndConflicts uses for {}.
+        result = result.replaceAll(
+                "(?s),\\s*\"classTweakers\"\\s*:\\s*\\[[^\\]]*\\]",
+                "");
+        result = result.replaceAll(
+                "(?s)\"classTweakers\"\\s*:\\s*\\[[^\\]]*\\]\\s*,\\s*",
+                "");
+        result = result.replaceAll(
+                "(?s)\"classTweakers\"\\s*:\\s*\\[[^\\]]*\\]",
+                "");
+
+        // accessWidener is a SINGLE STRING: "accessWidener": "foo.accesswidener"
+        // [^\"]* permits string content between the quotes but stops at the
+        // closing quote.
+        result = result.replaceAll(
+                "(?s),\\s*\"accessWidener\"\\s*:\\s*\"[^\"]*\"",
+                "");
+        result = result.replaceAll(
+                "(?s)\"accessWidener\"\\s*:\\s*\"[^\"]*\"\\s*,\\s*",
+                "");
+        result = result.replaceAll(
+                "(?s)\"accessWidener\"\\s*:\\s*\"[^\"]*\"",
+                "");
+
+        return result;
     }
 
     /**

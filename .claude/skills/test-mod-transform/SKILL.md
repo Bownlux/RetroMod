@@ -81,7 +81,7 @@ Systematically test that Retromod transforms and loads mods correctly.
 ```
 .minecraft/
 ├── mods/
-│   ├── retromod-1.0.0-beta.3+26.1.jar    (Retromod itself)
+│   ├── retromod-1.0.0-beta.4+26.1.jar    (Retromod itself)
 │   ├── retromod-input/                      (Drop old mods here)
 │   │   ├── old-mod-1.20.jar
 │   │   └── processed/                       (Originals moved here after transform)

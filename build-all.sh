@@ -14,7 +14,7 @@
 # Don't exit on error - we'll handle errors ourselves
 # set -e
 
-VERSION="1.0.0-beta.3"
+VERSION="1.0.0-beta.4"
 # Only build for 1.20+ — older mods are translated BY Retromod, not hosted separately.
 # Security-only updates for versions before 26.1.
 MC_VERSIONS=("1.20" "1.20.1" "1.20.2" "1.20.3" "1.20.4" "1.20.5" "1.20.6" "1.21" "1.21.1" "1.21.2" "1.21.3" "1.21.4" "1.21.5" "1.21.6" "1.21.7" "1.21.8" "1.21.9" "1.21.10" "1.21.11" "26.1" "26.1.1" "26.1.2")
@@ -377,9 +377,20 @@ TOML
             rm -f "$TEMP_DIR/META-INF/mods.toml" 2>/dev/null
             # Create NeoForge mods.toml
             mkdir -p "$TEMP_DIR/META-INF"
+            # NeoForge: loaderVersion is the FancyModLoader version, NOT the
+            # NeoForge version. FML versions don't align with MC versions in
+            # any obvious way (FML 1.x for MC 1.20.2, FML 4.x for MC 1.20.6,
+            # FML 11.x for MC 26.1.x — and the numbers drift across each
+            # NeoForge release). Setting it to a low permissive value lets
+            # any current FML accept the mod; the actual NeoForge version
+            # gating is in the [[dependencies.retromod]] modId="neoforge"
+            # block further down, which uses NEOFORGE_LV.
+            # Without this, users hit "needs language provider java:X or
+            # above to load, we have found Y" where X is our MC-version-based
+            # number and Y is the FML version they have. Reported on beta.2.
             cat > "$TEMP_DIR/META-INF/neoforge.mods.toml" << TOML
 modLoader = "javafml"
-loaderVersion = "[${NEOFORGE_LV},)"
+loaderVersion = "[1,)"
 license = "MIT"
 issueTrackerURL = "https://github.com/Bownlux/Retromod/issues"
 

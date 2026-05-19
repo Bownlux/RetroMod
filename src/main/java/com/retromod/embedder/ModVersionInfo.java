@@ -36,7 +36,7 @@ public record ModVersionInfo(
     }
     
     private int[] parseVersion(String version) {
-        // Strip pre-release suffix (e.g., "1.0.0-beta.3" -> "1.0.0")
+        // Strip pre-release suffix (e.g., "1.0.0-beta.4" -> "1.0.0")
         int hyphen = version.indexOf('-');
         if (hyphen > 0) version = version.substring(0, hyphen);
 

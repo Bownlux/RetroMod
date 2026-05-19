@@ -19,7 +19,7 @@ Grab the latest release from GitHub:
 
 > [github.com/Bownlux/Retromod/releases](https://github.com/Bownlux/Retromod/releases)
 
-The file you want is named something like `retromod-1.0.0-beta.3.jar`. Download it somewhere you'll remember — your Downloads folder is fine.
+The file you want is named something like `retromod-1.0.0-beta.4.jar`. Download it somewhere you'll remember — your Downloads folder is fine.
 
 ## Find your Minecraft game directory
 
@@ -37,13 +37,13 @@ If you're using a launcher like Prism, MultiMC, or ATLauncher, each instance has
 
 1. Open your game directory.
 2. If there's no `mods/` folder, create one.
-3. Drop `retromod-1.0.0-beta.3.jar` into `mods/`.
+3. Drop `retromod-1.0.0-beta.4.jar` into `mods/`.
 4. Launch Minecraft.
 
 That's it. On macOS, the command-line version of step 3 looks like:
 
 ```bash
-cp ~/Downloads/retromod-1.0.0-beta.3.jar \
+cp ~/Downloads/retromod-1.0.0-beta.4.jar \
   ~/Library/Application\ Support/minecraft/mods/
 ```
 

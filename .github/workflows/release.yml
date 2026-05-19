@@ -4,7 +4,7 @@ name: Release latest main build
 # main. The release tag (`latest`) is force-updated each time, so users always
 # get the most recent build by downloading from the same URL.
 #
-# Versioned releases (e.g. v1.0.0-beta.3) are still cut by hand for milestone
+# Versioned releases (e.g. v1.0.0-beta.4) are still cut by hand for milestone
 # tags — this workflow does NOT touch those. It only manages the rolling
 # release.
 #
@@ -142,7 +142,7 @@ jobs:
 
           # `prerelease: true` keeps this from being shown as the headline
           # "Latest release" on the repo home page — that slot is reserved
-          # for hand-cut milestone releases (v1.0.0-beta.3, future v1.0.0,
+          # for hand-cut milestone releases (v1.0.0-beta.4, future v1.0.0,
           # etc.). `make_latest: false` enforces the same.
           prerelease: true
           make_latest: false
@@ -151,7 +151,7 @@ jobs:
           files: ${{ steps.ver.outputs.artifact_name }}
 
           body: |
-            **Rolling pre-release · Fabric build for MC ${{ steps.ver.outputs.mc_version }}** — auto-published on every successful CI run against `main`. Always points at the most recent green build. Versioned milestones (v1.0.0-beta.3, future v1.0.0…) are cut separately.
+            **Rolling pre-release · Fabric build for MC ${{ steps.ver.outputs.mc_version }}** — auto-published on every successful CI run against `main`. Always points at the most recent green build. Versioned milestones (v1.0.0-beta.4, future v1.0.0…) are cut separately.
 
             ### What this is
             This is the **Fabric variant** of Retromod, built for **MC ${{ steps.ver.outputs.mc_version }}**. Fabric is Retromod's primary loader — see the [README](https://github.com/${{ github.repository }}#retromod) for why. The fat shaded JAR that contains all three loaders' metadata is intentionally not published here; loaders disagree about whether a multi-loader JAR is acceptable, and shipping a single-loader JAR avoids the ambiguity entirely.
