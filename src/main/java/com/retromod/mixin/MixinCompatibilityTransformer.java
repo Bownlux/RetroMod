@@ -97,7 +97,33 @@ public class MixinCompatibilityTransformer {
         }
         
         LOGGER.debug("Transforming Mixin class: {}", classNode.name);
-        
+
+        // Strip blocklisted handler methods FIRST. Some mixin handlers fatally
+        // crash on the target MC and can't be repaired by remapping — chiefly a
+        // MixinExtras @WrapOperation/@ModifyExpressionValue that captures a @Local
+        // from a vanilla method whose local layout changed (the @Local resolves to
+        // the wrong slot and MixinExtras emits an invalid bridge → VerifyError at
+        // load, fatal before any soft-fail can run). Removing the handler here means
+        // the framework never processes it: the mod loads with that one feature
+        // inert instead of the whole game crashing. Curated in mixin-blocklist.json.
+        Set<String> blockedMethods = MixinBlocklist.methodsToStrip(classNode.name);
+        if (blockedMethods != null) {
+            int before = classNode.methods.size();
+            if (blockedMethods.isEmpty()) {
+                // Whole-class: drop every injector handler (keeps <init>, helpers).
+                classNode.methods.removeIf(MixinCompatibilityTransformer::hasInjectorAnnotation);
+            } else {
+                classNode.methods.removeIf(m -> blockedMethods.contains(m.name));
+            }
+            int removed = before - classNode.methods.size();
+            if (removed > 0) {
+                modified = true;
+                LOGGER.info("Mixin blocklist: stripped {} handler method(s) from {} "
+                        + "— this mixin is known to crash on the target MC; the mod loads "
+                        + "with that feature inert", removed, classNode.name);
+            }
+        }
+
         // Transform class-level annotations (@Mixin targets)
         // Check BOTH visible and invisible — @Mixin is RuntimeInvisibleAnnotation
         for (List<AnnotationNode> annotations : List.of(
@@ -160,6 +186,31 @@ public class MixinCompatibilityTransformer {
      * Count the number of parameter slots in a method descriptor.
      * Doubles and longs take 2 slots, everything else takes 1.
      */
+    /**
+     * Whether a method carries an injector annotation — SpongePowered
+     * ({@code @Inject}/{@code @Redirect}/{@code @ModifyArg}/{@code @ModifyVariable}/
+     * {@code @ModifyConstant}), {@code @Overwrite}, or any MixinExtras annotation
+     * ({@code @WrapOperation}, {@code @ModifyExpressionValue}, {@code @WrapMethod}, …).
+     * Used for whole-class blocklist entries to drop every handler while leaving
+     * constructors, {@code @Shadow}/{@code @Accessor} members, and plain helpers intact.
+     */
+    private static boolean hasInjectorAnnotation(MethodNode m) {
+        return injectorPresent(m.visibleAnnotations) || injectorPresent(m.invisibleAnnotations);
+    }
+
+    private static boolean injectorPresent(List<AnnotationNode> anns) {
+        if (anns == null) return false;
+        for (AnnotationNode a : anns) {
+            if (a.desc == null) continue;
+            if (a.desc.contains("spongepowered/asm/mixin/injection/")
+                    || a.desc.contains("llamalad7/mixinextras/")
+                    || OVERWRITE_DESC.equals(a.desc)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private int countParameterSlots(String desc) {
         int slots = 0;
         int i = 1; // skip '('

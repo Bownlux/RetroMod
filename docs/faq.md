@@ -63,16 +63,16 @@ For CurseForge / Modrinth / ATLauncher packs specifically: include Retromod as a
 
 ## How does Retromod handle a mod's dependencies? Old version or new?
 
-Translate the **whole set together**, and use the dependency version the mod was built against — not a new one.
+Use the **newest** version of the dependency — the one built for the MC version you're running. Retromod's job is to bridge the *old mod's* calls onto the *current* library, not to drag an ancient library forward.
 
-Retromod transforms a mod's bytecode (and the bytecode of any library it bundles via Jar-in-Jar) so it runs on the target MC. It does **not** swap a mod's dependency for a newer release. So:
+- **Library mods** (Fabric API, Architectury, Cloth Config, GeckoLib, etc.) — install the current, native build for your target MC, exactly as you would for any modern setup. The old mod calls the library's old API; Retromod's shims and bridge polyfills remap those calls to the new API. That's the same mechanism that lets an old mod run against today's Fabric API.
+- **Bundled (JiJ) dependencies** are handled automatically — a library shipped inside the mod JAR rides along and gets transformed with it. You generally don't need to install those separately; if you do, use the newest standalone build.
 
-- **Bundled (JiJ) dependencies** are handled automatically — they ride along inside the mod JAR and get transformed with it.
-- **Separate library mods** (Cardinal Components, Architectury, Cloth Config, etc.) should be run through Retromod too: put the **old** version — the one your mods were built for — into `retromod-input/` alongside them. Retromod translates that old library up to the target MC.
+Don't go hunting for ancient builds of a library to match an old mod — that just gives you two old things to translate instead of one, and a library built for 1.20.1 has its own pile of removed-API problems on 26.1.
 
-What you should *not* do is install a brand-new native build of a library next to old mods that depend on it. New major versions often rename packages or change their API, and the old mod is still calling the old one. The classic example is Cardinal Components: the project moved from `dev.onyxstudios.cca` (CCA 5.x and earlier) to `org.ladysnake.cca` (CCA 6.x). A mod built for the old API references `dev.onyxstudios.cca.*`; dropping in a modern `org.ladysnake` CCA next to it doesn't satisfy that — and if the mod *also* bundles its own old copy, you now have two CCAs fighting. Translate the old CCA with Retromod and remove the standalone modern one.
+Where this is still rough is a library that **renamed its package** between the old and new versions. The current example is Cardinal Components: it moved from `dev.onyxstudios.cca` (5.x) to `org.ladysnake.cca` (6.x). An old mod references `dev.onyxstudios.cca.*`; installing modern CCA gives you `org.ladysnake.cca.*`, and until Retromod ships the `dev.onyxstudios.cca → org.ladysnake.cca` bridge those names don't line up. That bridge is the right fix (and is tracked) — the answer is *not* to downgrade to old CCA.
 
-Rule of thumb: if mod A was released for MC 1.20.1, gather A **and its dependencies as they existed for 1.20.1**, drop them all in `retromod-input/` together, and let Retromod move the whole set forward at once.
+Rule of thumb: install the **newest** version of every dependency, just like a normal modern install, and let Retromod carry the old mod across to it.
 
 ## Can I commercialize a modpack using Retromod?
 

@@ -39,6 +39,22 @@ There's no general fix for the injection itself: the mod's injector was written 
 
 What *does* hard-crash — and what Retromod fixes — is when the same mod also references a **removed class**. Caverns & Chasms pulled the deleted `DirectionProperty` into `Blocks.<clinit>` during bootstrap, and that `NoClassDefFoundError` killed the game before any of the soft-failed mixins mattered. Retromod polyfills `DirectionProperty` (redirecting it to the surviving `EnumProperty`), so the mod now boots; the reworked-method mixins above still soft-fail, so those particular tweaks won't apply, but the game runs.
 
+### MixinExtras `@Local` captures — and the mixin blocklist
+
+A nastier variant: MixinExtras' `@WrapOperation` / `@ModifyExpressionValue` with a `@Local` capture. Standard Mixin's `@Inject` can be downgraded to fail-soft, but a `@Local` that no longer binds (because the vanilla method's local-variable layout changed) makes MixinExtras emit an **invalid bridge method**, which the JVM rejects with `VerifyError: Bad local variable type` *at class-load* — fatal, before any soft-fail can run. Deeper & Darker's `PaintingItemMixin` hit this on 26.1: it wraps `ItemStack.shrink` inside `HangingEntityItem.useOn` and captures the `Level` local, which moved when 26.1 restructured `useOn` ([#28](https://github.com/Bownlux/Retromod/issues/28)).
+
+This can't be auto-detected safely — the local usually still exists, just at a different slot, so a heuristic would strip working mixins too. Instead Retromod ships a curated **mixin blocklist** (`retromod/mixin-blocklist.json`) that surgically removes the specific crashing handler so the framework never processes it: the mod boots and only that one feature is inert. You can extend it for your own mods via `config/retromod/mixin-blocklist.json`:
+
+```json
+{
+  "blocked": [
+    { "mixin": "com/example/mod/mixin/SomeMixin", "methods": ["handlerThatCrashes"] }
+  ]
+}
+```
+
+Omit `methods` to disable every injector on the class. If a mod crashes with `VerifyError: Bad local variable type` pointing at a `wrapOperation$…$mixinextras$bridge` method, that mixin handler is the culprit — add it here (and please file an issue so it can join the curated list).
+
 ## Specific mods that will never work
 
 This is the obvious list. Everything here matches one or more of the general rules above. Other mods that match those rules belong here too — these are just the ones people ask about most.

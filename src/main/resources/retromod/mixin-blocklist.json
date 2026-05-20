@@ -1,0 +1,30 @@
+{
+  "_comment": [
+    "Curated list of mixin handler methods that FATALLY crash on the target MC and",
+    "cannot be repaired by remapping. Retromod surgically removes the listed handler",
+    "method(s) from the mixin during transformation, so the mixin framework never",
+    "processes them — the mod loads and the one feature that handler implemented is",
+    "inert, instead of the whole game crashing.",
+    "",
+    "This is the escape hatch for failures we cannot safely auto-detect — most notably",
+    "MixinExtras @WrapOperation / @ModifyExpressionValue handlers that capture a @Local",
+    "from a vanilla method whose local-variable layout changed between MC versions. The",
+    "@Local then resolves to the wrong slot and MixinExtras emits an invalid bridge",
+    "(VerifyError: Bad local variable type) at class-load time.",
+    "",
+    "Users can extend or override this via config/retromod/mixin-blocklist.json (same",
+    "format). Entries from both files are merged.",
+    "",
+    "Format: each entry needs a 'mixin' (the mixin class, '/' or '.' separated). If",
+    "'methods' is given, only those handler methods are stripped (surgical, preferred).",
+    "If 'methods' is omitted/empty, every injector handler on the class is stripped."
+  ],
+  "blocked": [
+    {
+      "mixin": "com/kyanite/deeperdarker/mixin/PaintingItemMixin",
+      "methods": ["deeperdarker$decrementStackOnServer"],
+      "issue": "#28",
+      "reason": "MixinExtras @WrapOperation + @Local Level on HangingEntityItem.useOn, wrapping ItemStack.shrink(I). MC 26.1 restructured useOn, so the @Local Level resolves to a non-existent slot and MixinExtras emits an invalid bridge (VerifyError: Bad local variable type) that crashes at bootstrap. Stripping just this handler lets Deeper and Darker boot; the painting stack-decrement tweak is inert."
+    }
+  ]
+}
