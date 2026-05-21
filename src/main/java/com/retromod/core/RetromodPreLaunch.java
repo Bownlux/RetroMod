@@ -87,7 +87,7 @@ public class RetromodPreLaunch implements PreLaunchEntrypoint {
     @Override
     public void onPreLaunch() {
         LOGGER.info("╔════════════════════════════════════════════════════════════╗");
-        LOGGER.info("║  Retromod v1.0.0-beta.6                                    ║");
+        LOGGER.info("║  Retromod v1.0.0-beta.7                                    ║");
         LOGGER.info("╚════════════════════════════════════════════════════════════╝");
         
         try {
@@ -144,6 +144,8 @@ public class RetromodPreLaunch implements PreLaunchEntrypoint {
             // Step 3: Show restart message if we transformed anything
             if (totalTransformed > 0) {
                 showRestartMessage();
+                // Arm the in-game restart prompt (#33), shown on the title screen.
+                com.retromod.gui.RestartPrompt.markPending(totalTransformed);
             }
 
             // Step 4: Show complexity warnings for skipped mods
@@ -190,6 +192,45 @@ public class RetromodPreLaunch implements PreLaunchEntrypoint {
     }
 
     /**
+     * Whether MC version {@code a} is strictly newer than {@code b}, by numeric
+     * per-component comparison (missing trailing components count as 0). Used to
+     * skip version shims whose target is newer than the host — those rewrite a
+     * mod's references to names the host doesn't have yet. On an unparseable
+     * version we return {@code false} (don't skip) so we never over-exclude.
+     */
+    static boolean mcVersionExceeds(String a, String b) {
+        try {
+            return compareMcVersions(a, b) > 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Numeric per-component MC version compare ({@code 1.21.8} vs {@code 26.1} → negative). */
+    static int compareMcVersions(String a, String b) {
+        int[] pa = parseMcVersion(a);
+        int[] pb = parseMcVersion(b);
+        int n = Math.max(pa.length, pb.length);
+        for (int i = 0; i < n; i++) {
+            int x = i < pa.length ? pa[i] : 0;
+            int y = i < pb.length ? pb[i] : 0;
+            if (x != y) return Integer.compare(x, y);
+        }
+        return 0;
+    }
+
+    private static int[] parseMcVersion(String v) {
+        if (v == null) return new int[0];
+        java.util.regex.Matcher m =
+            java.util.regex.Pattern.compile("^(\\d+(?:\\.\\d+)*)").matcher(v.trim());
+        if (!m.find()) return new int[0];
+        String[] parts = m.group(1).split("\\.");
+        int[] out = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) out[i] = Integer.parseInt(parts[i]);
+        return out;
+    }
+
+    /**
      * Register all version shims and polyfills so that the bytecode transformer
      * has redirects available BEFORE AOT transformation runs.
      * Without this, mods are transformed with an empty redirect map.
@@ -203,6 +244,7 @@ public class RetromodPreLaunch implements PreLaunchEntrypoint {
             // Load version shims via ServiceLoader
             ServiceLoader<VersionShim> shims = ServiceLoader.load(VersionShim.class);
             int shimCount = 0;
+            int skippedNewer = 0;
             java.util.Iterator<VersionShim> shimIt = shims.iterator();
             while (shimIt.hasNext()) {
                 VersionShim shim;
@@ -213,13 +255,28 @@ public class RetromodPreLaunch implements PreLaunchEntrypoint {
                     continue;
                 }
                 try {
+                    // Only register shims whose TARGET version is <= the host MC.
+                    // A shim X→Y rewrites references to Y-version names; if Y is newer
+                    // than the host, those names don't exist at runtime and the shim
+                    // BREAKS the mod. The clearest case is the 1.21.11→26.1 shim: it
+                    // renames Fabric API classes (ScreenEvents$BeforeRender→BeforeExtract,
+                    // ExtendedScreenHandlerFactory→ExtendedMenuProvider, …) and rewrites
+                    // rendering types — applied on a 1.21.8/1.21.1 host that produces
+                    // 26.1-only names → NoClassDefFoundError/VerifyError (bugs #31/#32/#35).
+                    // Unlike the intermediary remap, Fabric API names are identical in the
+                    // mod and the runtime, so these renames bite even on Fabric.
+                    if (mcVersionExceeds(shim.getTargetVersion(), hostVersion)) {
+                        skippedNewer++;
+                        continue;
+                    }
                     shim.registerRedirects(transformer);
                     shimCount++;
                 } catch (Exception e) {
                     LOGGER.debug("Could not register shim: {}", e.getMessage());
                 }
             }
-            LOGGER.info("Registered {} version shims for transformation", shimCount);
+            LOGGER.info("Registered {} version shims for transformation ({} skipped as newer than host MC {})",
+                shimCount, skippedNewer, hostVersion);
 
             // Register intermediary→Mojang class mappings for bytecode remapping.
             // CRITICAL: this is a 26.1+ ONLY transformation. MC 26.1 was the first

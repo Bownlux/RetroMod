@@ -58,12 +58,12 @@ mvn exec:java -Dexec.mainClass="com.retromod.cli.RetromodCli" -Dexec.args="<comm
 
 **Important:** Always pass `-Dexec.skip=true` during build to prevent Maven from running the CLI entrypoint.
 
-Output JAR: `target/retromod-1.0.0-beta.6.jar`
+Output JAR: `target/retromod-1.0.0-beta.7.jar`
 
 ## Deploy to Minecraft
 
 ```bash
-cp target/retromod-1.0.0-beta.6.jar ~/Library/Application\ Support/minecraft/mods/retromod-1.0.0-beta.6+26.1.jar
+cp target/retromod-1.0.0-beta.7.jar ~/Library/Application\ Support/minecraft/mods/retromod-1.0.0-beta.7+26.1.jar
 ```
 
 Game directory (macOS): `~/Library/Application Support/minecraft/`

@@ -66,6 +66,22 @@ public class Fabric_1_20_6_to_1_21 implements VersionShim {
             "(Ljava/lang/String;Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"
         );
 
+        // Intermediary-keyed variant for Fabric mods on a pre-26.1 host. There the
+        // intermediary→Mojang remap is OFF (it only runs for 26.1+), so the bytecode
+        // still says `new class_2960(String, String)` rather than the Mojang name —
+        // and that 2-arg constructor is private as of 1.21, so the call fails at
+        // runtime with IllegalAccessError (bugs #36/#37, Haema/Rubinated Nether on
+        // 1.21.1). class_2960 = ResourceLocation; method_60655 = fromNamespaceAndPath
+        // (intermediary names are stable, and this factory was added in 1.21). On a
+        // 26.1 host the remap has already turned class_2960 into Identifier before
+        // this is looked up, so this entry simply never matches there.
+        transformer.registerConstructorRedirect(
+            "net/minecraft/class_2960",
+            "(Ljava/lang/String;Ljava/lang/String;)V",
+            "net/minecraft/class_2960", "method_60655",
+            "(Ljava/lang/String;Ljava/lang/String;)Lnet/minecraft/class_2960;"
+        );
+
         // ============================================================
         // ENTITY DIMENSION CHANGE
         // Entity.changeDimension(ServerLevel) -> Entity.teleportTo(ServerLevel)

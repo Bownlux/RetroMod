@@ -2,6 +2,21 @@
 
 All user-facing changes to Retromod. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are [semver](https://semver.org/) with the `1.0.0-beta.N` series leading up to stable 1.0.
 
+## [1.0.0-beta.7] — 2026-05-21
+
+A focused follow-up to beta.6. Several reporters on beta.6 still hit "old mod won't load on a pre-26.1 host" crashes: beta.6 gated the intermediary→Mojang *remap*, but still applied 26.1 *shims* (which rename API classes) on older hosts. This finishes that fix on every loader, handles the private `ResourceLocation` constructor on 1.21.x, and adds an in-game restart prompt. **If you're on beta.6 and translating onto a pre-26.1 host, upgrade.** (Translating onto 26.1 is unchanged.)
+
+### Fixed
+
+- **Pre-26.1 hosts crash on 26.1-only API names** (Fabric: `NoClassDefFoundError: net/fabricmc/fabric/api/client/screen/v1/ScreenEvents$BeforeExtract`, `…/menu/v1/ExtendedMenuProvider`, `VerifyError` against `…/LevelRenderContext`; NeoForge: 26.1 names like `ItemHandler`/`FluidHandler`). Companion to beta.6's remap gate: Retromod registered **every** version shim regardless of host, so the `1.21.11→26.1` shim — which renames API classes (Fabric `BeforeRender`→`BeforeExtract`, `WorldRenderContext`→`LevelRenderContext`; NeoForge `IItemHandler`→`ItemHandler`) — ran on 1.21.8/1.21.1 hosts and rewrote mods to names that only exist in 26.1. Unlike the intermediary remap, API names are identical in the mod and the runtime, so these renames bite even on Fabric. Shims are now gated **on every loader** (Fabric, NeoForge, Forge): a shim is registered only if its target version is ≤ the host. Reported on Fabric 1.21.8 (Puzzles Lib #31, Tidal #32), Fabric 1.21.1 (Arcanus #35), and NeoForge 1.21.1 (#38). (On a 26.1 host every shim still applies — unchanged.)
+- **Fabric: `IllegalAccessError` calling the private `ResourceLocation(String, String)` constructor on 1.21.x.** That two-arg constructor became private in 1.21, so a mod built for ≤1.20 (`new ResourceLocation(ns, path)`) crashes at bootstrap on a 1.21.x host. The `1.20.6→1.21` shim already rewrote it to `ResourceLocation.fromNamespaceAndPath`, but only under the Mojang name — on a pre-26.1 Fabric host the bytecode keeps the intermediary `class_2960` (the remap is off), so the redirect missed. Added the intermediary-keyed variant (`class_2960` → `method_60655`). Reported against Haema and Rubinated Nether on 1.21.1 (#36, #37).
+
+### Added
+
+- **In-game restart prompt.** When Retromod converts mods during launch, it now shows a Yes/No prompt on the title screen — "converted N mod(s); the game needs to restart to load them" — instead of only logging it. Clicking Yes cleanly closes the client so you can relaunch from your launcher (true in-process relaunch isn't attempted; it can't be done reliably across launchers). Works on all loaders, declining returns to the title screen, and it's gated by `restart_prompt` in `config/retromod/config.json` (default on; set `false` to suppress). Requested in #33.
+
+---
+
 ## [1.0.0-beta.6] — 2026-05-20
 
 A JPMS-conflict hotfix for `javax.annotation` (same family as the Gson/ASM conflicts), a correctness fix for Fabric mods running on a **pre-26.1 host** (Retromod was over-translating them to 26.1 names that don't exist on older Minecraft), a polyfill for the removed `DirectionProperty` block-state class, and a mixin blocklist that turns a class of fatal MixinExtras crashes into inert features.

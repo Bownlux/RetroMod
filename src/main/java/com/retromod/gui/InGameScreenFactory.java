@@ -59,16 +59,13 @@ public final class InGameScreenFactory {
             "net.minecraft.network.chat.Component"
         );
 
+        // The plain Yes/No ConfirmScreen — NOT ConfirmLinkScreen (that's the
+        // link-warning dialog with a different constructor). Its ctor is
+        // ConfirmScreen(BooleanConsumer, Component title, Component message).
         confirmScreenClass = McReflect.findClass(
-            "net.minecraft.client.gui.screen.ConfirmScreen",
-            "net.minecraft.client.gui.screens.ConfirmLinkScreen"
+            "net.minecraft.client.gui.screen.ConfirmScreen",    // yarn
+            "net.minecraft.client.gui.screens.ConfirmScreen"    // mojang
         );
-        // Fallback: try the simpler ConfirmScreen
-        if (confirmScreenClass == null) {
-            confirmScreenClass = McReflect.findClass(
-                "net.minecraft.client.gui.screen.ConfirmScreen"
-            );
-        }
 
         minecraftClientClass = McReflect.findClass(
             "net.minecraft.client.MinecraftClient",
@@ -228,6 +225,62 @@ public final class InGameScreenFactory {
 
         } catch (Exception e) {
             LOGGER.warn("Failed to show confirm screen: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Show a Yes/No confirmation over a known parent screen. Unlike
+     * {@link #showConfirmScreen}, declining returns to {@code parentScreen}
+     * (e.g. the title screen) instead of clearing to a null screen — so this is
+     * safe to invoke from a title-screen init hook. Used by the restart prompt (#33).
+     *
+     * @param parentScreen the screen to return to if the user clicks No
+     * @param title        dialog title
+     * @param message      dialog body (supports newlines)
+     * @param onYes        run when the user clicks Yes
+     */
+    public static void showRestartConfirm(Object parentScreen, String title,
+                                          String message, Runnable onYes) {
+        if (!resolveClasses() || confirmScreenClass == null) {
+            LOGGER.warn("Cannot show restart confirm (screen classes unavailable)");
+            return;
+        }
+        try {
+            Object titleText = createText(title);
+            Object messageText = createText(message);
+            if (titleText == null || messageText == null) return;
+
+            Class<?> boolConsumerClass;
+            try {
+                boolConsumerClass = Class.forName("it.unimi.dsi.fastutil.booleans.BooleanConsumer");
+            } catch (ClassNotFoundException e) {
+                LOGGER.debug("BooleanConsumer unavailable; cannot build ConfirmScreen");
+                return;
+            }
+
+            Object callback = Proxy.newProxyInstance(
+                boolConsumerClass.getClassLoader(),
+                new Class<?>[]{boolConsumerClass},
+                (proxy, method, args) -> {
+                    if (method.getParameterCount() == 1 && args != null) {
+                        boolean confirmed = (Boolean) args[0];
+                        if (confirmed) {
+                            if (onYes != null) onYes.run(); // stops the client; screen irrelevant
+                        } else {
+                            // Decline → restore the title screen, never a null screen.
+                            setScreen(parentScreen);
+                        }
+                    }
+                    return null;
+                }
+            );
+
+            Constructor<?> ctor = confirmScreenClass.getConstructor(
+                boolConsumerClass, textClass, textClass);
+            Object screen = ctor.newInstance(callback, titleText, messageText);
+            setScreen(screen);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to show restart confirm: {}", e.getMessage());
         }
     }
 

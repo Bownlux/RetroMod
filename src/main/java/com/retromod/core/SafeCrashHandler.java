@@ -178,7 +178,7 @@ public class SafeCrashHandler {
             sb.append("\nJava: ").append(System.getProperty("java.version")).append("\n");
             sb.append("OS: ").append(System.getProperty("os.name")).append(" ")
               .append(System.getProperty("os.version")).append("\n");
-            sb.append("Retromod: 1.0.0-beta.6\n");
+            sb.append("Retromod: 1.0.0-beta.7\n");
             sb.append("\nPlease report this at: https://github.com/Bownlux/Retromod/issues\n");
 
             java.nio.file.Files.writeString(crashLog, sb.toString());

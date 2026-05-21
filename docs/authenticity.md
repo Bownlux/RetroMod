@@ -46,7 +46,7 @@ The JAR is signed with a signature structure that mimics the official format but
 ## Where to check
 
 - **Log file:** Retromod logs the status on startup. Search your Minecraft log for `[Retromod] Authenticity:`.
-- **Manually with `jarsigner`:** run `jarsigner -verify -verbose -certs retromod-1.0.0-beta.6.jar` in a terminal. Java's built-in verifier will print the cert and whether the contents are intact.
+- **Manually with `jarsigner`:** run `jarsigner -verify -verbose -certs retromod-1.0.0-beta.7.jar` in a terminal. Java's built-in verifier will print the cert and whether the contents are intact.
 
 The authenticity status is intentionally **not** shown in the in-game settings screen. We don't want users to see an "UNOFFICIAL" warning in a prominent UI and assume legitimate forks are malicious — the log line is enough information for anyone who needs it.
 

@@ -157,6 +157,9 @@ public class RetromodNeoForge {
         // Also scan mods/ for incompatible mods and transform in place
         transformed += transformModsInPlace();
 
+        // Arm the in-game restart prompt (#33), shown on the title screen.
+        com.retromod.gui.RestartPrompt.markPending(transformed);
+
         // CLIENT: Show GUI for first-time setup or add mods button
         // SERVER: Skip GUI, just log
         if (!isServer && EnvironmentDetector.canShowGui()) {
@@ -293,6 +296,15 @@ public class RetromodNeoForge {
                 if ("neoforge".equals(loaderType) ||
                     "forge".equals(loaderType) ||
                     "common".equals(loaderType)) {
+                    // Only register shims whose target MC is <= the host. The
+                    // 1.21.11→26.1 shim renames NeoForge/vanilla classes to 26.1 names
+                    // (IItemHandler→ItemHandler, IFluidHandler→FluidHandler, …); applied
+                    // on a 1.21.1 host those names don't exist → load crash. Same gate as
+                    // the Fabric path (RetromodPreLaunch.mcVersionExceeds). See #38.
+                    if (RetromodPreLaunch.mcVersionExceeds(
+                            shim.getTargetVersion(), RetromodVersion.TARGET_MC_VERSION)) {
+                        continue;
+                    }
                     shim.registerRedirects(transformer);
                     count++;
                 }
