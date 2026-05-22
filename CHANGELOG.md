@@ -2,6 +2,12 @@
 
 All user-facing changes to Retromod. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are [semver](https://semver.org/) with the `1.0.0-beta.N` series leading up to stable 1.0.
 
+## [1.0.0-beta.8] — 2026-05-21
+
+**NeoForge / Forge hotfix.** beta.7 crashed on launch on NeoForge and Forge — *even with no mods* — with `NoClassDefFoundError: net/fabricmc/loader/api/entrypoint/PreLaunchEntrypoint` ("Retromod has failed to load correctly"). beta.7's shim-version gate had the NeoForge/Forge entry points call a version-compare helper that lived on `RetromodPreLaunch`, and that class `implements` the Fabric-only `PreLaunchEntrypoint`; loading it on a non-Fabric loader can't resolve that interface, so mod construction aborted. The version-math helpers moved to the loader-agnostic `RetromodVersion` (which exists precisely so entry points don't drag in another loader's classes), so the NeoForge/Forge paths no longer touch any Fabric type. **Fabric beta.7 is unaffected** — only NeoForge and Forge need this build. Reported in #40; #41 was downstream (mods couldn't convert while Retromod itself failed to load).
+
+---
+
 ## [1.0.0-beta.7] — 2026-05-21
 
 A focused follow-up to beta.6. Several reporters on beta.6 still hit "old mod won't load on a pre-26.1 host" crashes: beta.6 gated the intermediary→Mojang *remap*, but still applied 26.1 *shims* (which rename API classes) on older hosts. This finishes that fix on every loader, handles the private `ResourceLocation` constructor on 1.21.x, and adds an in-game restart prompt. **If you're on beta.6 and translating onto a pre-26.1 host, upgrade.** (Translating onto 26.1 is unchanged.)

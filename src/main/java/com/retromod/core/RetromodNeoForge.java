@@ -300,8 +300,8 @@ public class RetromodNeoForge {
                     // 1.21.11→26.1 shim renames NeoForge/vanilla classes to 26.1 names
                     // (IItemHandler→ItemHandler, IFluidHandler→FluidHandler, …); applied
                     // on a 1.21.1 host those names don't exist → load crash. Same gate as
-                    // the Fabric path (RetromodPreLaunch.mcVersionExceeds). See #38.
-                    if (RetromodPreLaunch.mcVersionExceeds(
+                    // the Fabric path (RetromodVersion.mcVersionExceeds). See #38.
+                    if (RetromodVersion.mcVersionExceeds(
                             shim.getTargetVersion(), RetromodVersion.TARGET_MC_VERSION)) {
                         continue;
                     }

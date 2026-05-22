@@ -321,8 +321,8 @@ public class RetromodForge {
                     // 1.21.11→26.1 shim renames Forge/vanilla classes to 26.1 names
                     // (e.g. ForgeRegistries→BuiltInRegistries); applied on a 1.21.x host
                     // those names don't exist → load crash. Same gate as the Fabric path
-                    // (RetromodPreLaunch.mcVersionExceeds). See #38.
-                    if (RetromodPreLaunch.mcVersionExceeds(
+                    // (RetromodVersion.mcVersionExceeds). See #38.
+                    if (RetromodVersion.mcVersionExceeds(
                             shim.getTargetVersion(), RetromodVersion.TARGET_MC_VERSION)) {
                         continue;
                     }

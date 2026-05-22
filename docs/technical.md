@@ -167,7 +167,7 @@ This catches the trivial case of "someone renamed retromod.jar to something mali
 Users who want to independently verify a Retromod release can run Java's built-in `jarsigner`:
 
 ```bash
-jarsigner -verify -verbose -certs retromod-1.0.0-beta.7.jar
+jarsigner -verify -verbose -certs retromod-1.0.0-beta.8.jar
 ```
 
 If the JAR is signed by the official key, `jarsigner` will print the certificate subject and a "jar verified" line. If there are any modifications after signing, `jarsigner` will say so.

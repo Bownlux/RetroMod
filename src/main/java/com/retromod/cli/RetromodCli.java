@@ -36,7 +36,7 @@ import java.util.*;
  */
 public class RetromodCli {
     
-    private static final String VERSION = "1.0.0-beta.7";
+    private static final String VERSION = "1.0.0-beta.8";
     private static final String TARGET_MC_VERSION = "26.1";
     
     private static ShimRegistry shimRegistry;

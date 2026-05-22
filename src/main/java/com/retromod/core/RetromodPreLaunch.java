@@ -87,7 +87,7 @@ public class RetromodPreLaunch implements PreLaunchEntrypoint {
     @Override
     public void onPreLaunch() {
         LOGGER.info("╔════════════════════════════════════════════════════════════╗");
-        LOGGER.info("║  Retromod v1.0.0-beta.7                                    ║");
+        LOGGER.info("║  Retromod v1.0.0-beta.8                                    ║");
         LOGGER.info("╚════════════════════════════════════════════════════════════╝");
         
         try {
@@ -160,74 +160,20 @@ public class RetromodPreLaunch implements PreLaunchEntrypoint {
         }
     }
     
-    /**
-     * Whether the host MC version is 26.1+ — the first unobfuscated MC release,
-     * where the Fabric runtime switched from intermediary names
-     * ({@code net.minecraft.class_XXXX}) to Mojang official names.
-     *
-     * <p>This gates all intermediary→Mojang remapping and 26.1 class moves.
-     * A Fabric mod built for any pre-26.1 version already references the
-     * intermediary names that the pre-26.1 runtime exposes, so it loads fine
-     * untouched. Remapping those references to Mojang names (Identifier,
-     * ParticleType, BuiltInRegistries, Component, …) on a pre-26.1 host
-     * produces classes that DO NOT EXIST at runtime, crashing the mod with
-     * {@code ClassNotFoundException} (bugs #21, #29).
-     *
-     * <p>MC 26.1 uses a year-based version scheme (26 = 2026), whose major
-     * component sorts above the legacy {@code 1.x.y} scheme numerically.
-     * Only an explicit major of 26+ is treated as unobfuscated; an
-     * unparseable/unknown version defaults to {@code true} to preserve the
-     * primary (published) 26.1 behavior.
-     */
+    // Version math moved to the loader-agnostic RetromodVersion so the
+    // NeoForge/Forge entry points can use it without dragging in this Fabric
+    // class (PreLaunchEntrypoint) — see issue #40. These thin delegates keep the
+    // Fabric pre-launch call sites and tests pointing here.
     static boolean isUnobfuscatedTarget(String hostVersion) {
-        if (hostVersion == null) return true;
-        try {
-            java.util.regex.Matcher m =
-                java.util.regex.Pattern.compile("^(\\d+)").matcher(hostVersion.trim());
-            if (!m.find()) return true; // unknown → assume 26.1+ (published behavior)
-            return Integer.parseInt(m.group(1)) >= 26;
-        } catch (Exception e) {
-            return true;
-        }
+        return RetromodVersion.isUnobfuscatedTarget(hostVersion);
     }
 
-    /**
-     * Whether MC version {@code a} is strictly newer than {@code b}, by numeric
-     * per-component comparison (missing trailing components count as 0). Used to
-     * skip version shims whose target is newer than the host — those rewrite a
-     * mod's references to names the host doesn't have yet. On an unparseable
-     * version we return {@code false} (don't skip) so we never over-exclude.
-     */
     static boolean mcVersionExceeds(String a, String b) {
-        try {
-            return compareMcVersions(a, b) > 0;
-        } catch (Exception e) {
-            return false;
-        }
+        return RetromodVersion.mcVersionExceeds(a, b);
     }
 
-    /** Numeric per-component MC version compare ({@code 1.21.8} vs {@code 26.1} → negative). */
     static int compareMcVersions(String a, String b) {
-        int[] pa = parseMcVersion(a);
-        int[] pb = parseMcVersion(b);
-        int n = Math.max(pa.length, pb.length);
-        for (int i = 0; i < n; i++) {
-            int x = i < pa.length ? pa[i] : 0;
-            int y = i < pb.length ? pb[i] : 0;
-            if (x != y) return Integer.compare(x, y);
-        }
-        return 0;
-    }
-
-    private static int[] parseMcVersion(String v) {
-        if (v == null) return new int[0];
-        java.util.regex.Matcher m =
-            java.util.regex.Pattern.compile("^(\\d+(?:\\.\\d+)*)").matcher(v.trim());
-        if (!m.find()) return new int[0];
-        String[] parts = m.group(1).split("\\.");
-        int[] out = new int[parts.length];
-        for (int i = 0; i < parts.length; i++) out[i] = Integer.parseInt(parts[i]);
-        return out;
+        return RetromodVersion.compareMcVersions(a, b);
     }
 
     /**
